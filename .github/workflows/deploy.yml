@@ -41,7 +41,7 @@ jobs:
           # Transform the JSON array
           echo $input_json;
           output_json=$(echo $input_json | jq -c 'to_entries | map({
-              Dockerfile: (if .value != "./" then (.value + "./Dockerfile") else ("./Dockerfile") end),
+              Dockerfile: (if .value != "./" then (.value + "/Dockerfile") else ("./Dockerfile") end),
               context: .value,
               name: (if .value != "./" then .value | split("/")[1] else "${{env.CD_REPO}}" end),
               image: ("ghcr.io/epfl-enac/" + "${{env.CD_ORG}}" + "/" + (if .value != "./" then .value | ("${{env.CD_REPO}}" + "/" +  split("/")[1]) else "${{env.CD_REPO}}" end)),
