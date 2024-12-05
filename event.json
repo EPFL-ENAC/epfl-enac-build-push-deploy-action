@@ -1,0 +1,10 @@
+{
+  "inputs": {
+    "org": "epfl-enac",
+    "repo": "my-app",
+    "build_context": "[\"./frontend\", \"./backend\"]"
+  },
+  "secrets": {
+    "token": "your_token_here"
+  }
+}

@@ -1,15 +1,28 @@
+---
 name: deploy
 
-'on':
-  push:
-    branches:
-      - dev
-    tags: ['v*.*.*']
+on:
+  workflow_call:
+    inputs:
+      org:
+        required: true
+        type: string
+      repo:
+        required: true
+        type: string
+      build_context:
+        required: false
+        type: string
+        default: '["./"]'
+    secrets:
+      token:
+        required: true
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{github.repository}}
-
+  CD_ORG: ${{ inputs.org }}
+  CD_REPO: ${{ inputs.repo }}
+  CD_URI: https://api.github.com/repos/EPFL-ENAC/enack8s-app-config/dispatches
 
 # proper way of doing matrix builds: https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/running-variations-of-jobs-in-a-workflow
 
@@ -19,32 +32,30 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - name: Define matrix
+
+      - name: build matrix from build_context
         id: set-matrix
         shell: bash
         run: |
-          matrix=$(jq -nc '[
-            {
-              "Dockerfile": "./backend/Dockerfile",
-              "context": "./backend",
-              "image": "ghcr.io/epfl-enac/alice-ethz-arema/arema-api",
-              "id": 1
-            },
-            {
-              "Dockerfile": "./admin/Dockerfile",
-              "context": "./admin",
-              "image": "ghcr.io/epfl-enac/alice-ethz-arema/arema-admin",
-              "id": 2
-            },
-            {
-              "Dockerfile": "./frontend/Dockerfile",
-              "context": "./frontend",
-              "image": "ghcr.io/epfl-enac/alice-ethz-arema/arema-ui",
-              "id": 3
-            }
-          ]')
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-          echo $matrix
+          echo "matrix={"name": "test"}" >> "$GITHUB_OUTPUT"
+          input_json=${{ toJson(inputs.build_context) }};
+          # Transform the JSON array
+          echo $input_json;
+          output_json=$(echo $input_json | jq -c 'to_entries | map({
+              Dockerfile: (.value + "/Dockerfile"),
+              context: .value,
+              name: (if .value != "." then .value | split("/")[1] else inputs.repo end),
+              image: ("ghcr.io/epfl-enac/" + inputs.org + "/" + (if .value != "." then .value | (inputs.repo + "/" +  split("/")[1]) else inputs.repo end)),
+              id: (.key + 1)
+          })')  
+          echo "matrix=$output_json" >> "$GITHUB_OUTPUT"
+          echo $output_json
+
+      - name: Echo matrix
+        shell: bash
+        id: echo
+        run: |
+          echo ${{ steps.set-matrix.outputs.matrix }}
   build-and-push:
     runs-on: ubuntu-latest
     needs: define-matrix
@@ -59,6 +70,13 @@ jobs:
       image_data_1: ${{ steps.collect.outputs.image_data_1 }}
       image_data_2: ${{ steps.collect.outputs.image_data_2 }}
       image_data_3: ${{ steps.collect.outputs.image_data_3 }}
+      image_data_4: ${{ steps.collect.outputs.image_data_4 }}
+      image_data_5: ${{ steps.collect.outputs.image_data_5 }}
+      image_data_6: ${{ steps.collect.outputs.image_data_6 }}
+      image_data_7: ${{ steps.collect.outputs.image_data_7 }}
+      image_data_8: ${{ steps.collect.outputs.image_data_8 }}
+      image_data_9: ${{ steps.collect.outputs.image_data_9 }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -128,6 +146,14 @@ jobs:
             echo "branch=dev" >> $GITHUB_OUTPUT
             echo "branch=dev"
           fi
+          if [[ "${{github.ref}}" == refs/heads/test ]]; then
+            echo "branch=test" >> $GITHUB_OUTPUT
+            echo "branch=test"
+          fi
+          if [[ "${{github.ref}}" == refs/heads/stage ]]; then
+            echo "branch=stage" >> $GITHUB_OUTPUT
+            echo "branch=stage"
+          fi
       - name: Deploy application
         if: steps.set-branch.outputs.branch != ''
         run: |
@@ -135,8 +161,8 @@ jobs:
           {
             "event_type": "update-manifest",
             "client_payload": {
-              "repo_name": "${{ secrets.CD_REPO }}",
-              "repo_org": "${{ secrets.CD_ORG }}",
+              "repo_name": "${{ env.CD_REPO }}",
+              "repo_org": "${{ env.CD_ORG }}",
               "branch": "${{ steps.set-branch.outputs.branch }}",
               "images": ${{ steps.aggregate.outputs.images }}
             }
@@ -147,5 +173,5 @@ jobs:
           echo "Payload: $payload" && \
           curl -X POST \
           -H "Authorization: Bearer ${{ secrets.CD_TOKEN }}" \
-          ${{ secrets.CD_URI }} \
+          ${{ env.CD_URI }} \
           -d "$payload"

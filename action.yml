@@ -1,31 +1,34 @@
 ---
 name: "EPFL ENAC-IT4R Build Publish and Deploy"
-description:
-  "This action builds, publishes and deploys an application to the EPFL-ENAC
+description: >
+  This action builds, publishes and deploys an application to the EPFL-ENAC
   IT4R platform, which is a Kubernetes cluster. It is a composite action that
   uses the docker/metadata-action, docker/build-push-action and a custom
-  curl-based deployment action. using a github dispatch event."
+  curl-based deployment action. using a github dispatch event.
 inputs:
   # CD_URI: https://api.github.com/repos/EPFL-ENAC/enack8s-app-config/dispatches
   ENAC_IT4R_CD_ORG:
-    description: "App deployment org: examples are epfl-enac, epfl-lasur, epfl-resslab"
+    description: >
+      App deployment org: examples are epfl-enac, epfl-lasur, epfl-resslab
     required: true
   ENAC_IT4R_CD_REPO:
-    description:
-      "Deployment app repo: examples are resslab-astra-82001-frontend, which corresponds
+    description: >
+      Deployment app repo: examples are resslab-astra-82001-frontend, which corresponds
       to the frontend of the Astra 82001 project in the resslab org situated
-      in the EPFL-ENAC/enack8s-app-config/epfl-resslab/resslab-astra-82001-frontend"
+      in the EPFL-ENAC/enack8s-app-config/epfl-resslab/resslab-astra-82001-frontend
     required: true
   ENAC_IT4R_CD_TOKEN:
-    description: "App deployment secret given by the IT4R team enacit4research@epfl.ch"
+    description: >
+      App deployment secret given by the IT4R team enacit4research@epfl.ch
     required: true
   ENAC_IT4R_CD_BUILD_CONTEXT:
-    description:
-      'The context of the build, e.g. a list of directory paths to include
+    description: >
+      The context of the build, e.g. a list of directory paths to include
       in the build where the Dockerfile is located, for instances:
-      ["./backend", "./admin", "./frontend"]
+      ["./backend", "./admin", "./frontend"], default is ["."]
       which will result in the following matrix automatically:
-      {
+      ```json
+      [{
               "Dockerfile": "./backend/Dockerfile",
               "context": "./backend",
               "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/backend",
@@ -43,31 +46,20 @@ inputs:
               "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/frontend",
               "id": 3
             }
-        '
+            ]
+      ```
     required: true
 runs:
   using: "composite"
   steps:
-    - name: Checkout epfl-enac-deploy-action
-      uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Call deploy.yml
+      uses: ".github/workflows/deploy.yml"
       with:
-        repository: EPFL-ENAC/epfl-enac-deploy-action
-        ref: main
-        path: epfl-enac-deploy-action
-
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.10"
-
-    - name: Install dependencies from requirements.txt
-      shell: bash
-      run: |
-        pip install -r epfl-enac-deploy-action/requirements.txt
-
-    - name: Run Python script main.py
-      shell: bash
-      env:
-        DEPLOYMENT_SECRET: ${{ inputs.ENAC_IT4R_CD_deployment_secret }}
-      run: |
-        echo "new deployment method to be implemented"
+        org: ${{ inputs.ENAC_IT4R_CD_ORG }}
+        repo: ${{ inputs.ENAC_IT4R_CD_REPO }}
+        build_context: ${{ inputs.ENAC_IT4R_CD_BUILD_CONTEXT }}
+      secrets:
+        token: ${{ inputs.ENAC_IT4R_CD_TOKEN }}

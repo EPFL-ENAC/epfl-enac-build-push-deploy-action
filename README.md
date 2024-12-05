@@ -37,9 +37,10 @@ jobs:
   - `ENAC_IT4R_CD_TOKEN`:
     The secret associated with the deployment_id - (mandatory)
   - `ENAC_IT4R_CD_BUILD_CONTEXT`:
-    - The context of the build - (mandatory)
+    - The context of the build - (optional)
+    - Currently we support max 9 contexts/ or build image per repository
     - The context is the path to the directory containing the Dockerfile. For example: 
-      ["./backend", "./admin", "./frontend"]
+      ["./backend", "./admin", "./frontend"], default is ["."]
     - This will result in the following matrix automatically:
     ```json
     [
@@ -63,6 +64,19 @@ jobs:
             }
         ]
     ```
+    - in the default case (no context provided: will be ["."]), the matrix will be:
+    ```json
+    [
+      {
+              "Dockerfile": "./Dockerfile",
+              "context": ".",
+              "name": "${{ENAC_IT4R_CD_REPO}}",
+              "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}",
+              "id": 1
+            }
+        ]
+    ```
+   
 ## Create one secrets in your repository
 
 Under your repository settings in /settings/secrets/actions

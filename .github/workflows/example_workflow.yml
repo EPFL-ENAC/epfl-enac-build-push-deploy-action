@@ -1,0 +1,66 @@
+name: example_workflow
+
+'on':
+  push:
+    branches:
+      - dev
+    tags: ['v*.*.*']
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{github.repository}}
+  org: "epfl-enac"
+  repo: "my-app"
+  build_context: '["./backend", "./admin", "./frontend"]'
+  # build_context: '["."]'
+  token: "token"
+
+# proper way of doing matrix builds: https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/running-variations-of-jobs-in-a-workflow
+
+jobs:
+  example-job:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs }}
+    steps:
+      - name: Define matrix
+        id: set-matrix
+        shell: bash
+        run: |
+          input_json=${{ toJson(env.build_context) }};
+          # Transform the JSON array
+          echo $input_json;
+          output_json=$(echo $input_json | jq -c 'to_entries | map({
+              Dockerfile: (.value + "/Dockerfile"),
+              context: .value,
+              name: (if .value != "." then .value | split("/")[1] else env.repo end),
+              image: ("ghcr.io/epfl-enac/" + env.org + "/" + (if .value != "." then .value | (env.repo + "/" +  split("/")[1]) else env.repo end)),
+              id: (.key + 1)
+          })')  
+          echo $output_json
+  all-the-output:
+      runs-on: ubuntu-latest
+      outputs:
+        image_data_1: ${{ steps.collect.outputs.image_data_1 }}
+        image_data_2: ${{ steps.collect.outputs.image_data_2 }}
+        image_data_3: ${{ steps.collect.outputs.image_data_3 }}
+        image_data_4: ${{ steps.collect.outputs.image_data_4 }}
+        image_data_5: ${{ steps.collect.outputs.image_data_5 }}
+        image_data_6: ${{ steps.collect.outputs.image_data_6 }}
+        image_data_7: ${{ steps.collect.outputs.image_data_7 }}
+        image_data_8: ${{ steps.collect.outputs.image_data_8 }}
+        image_data_9: ${{ steps.collect.outputs.image_data_9 }}
+      steps:
+        - name: Collect Image Data
+          id: collect
+          run: |
+            echo "image_data_1={}" >> $GITHUB_OUTPUT
+            echo "image_data_2={}" >> $GITHUB_OUTPUT
+            echo "image_data_3={}" >> $GITHUB_OUTPUT
+        - name: Process Images
+          id: aggregate
+          run: |
+            images='${{ toJSON(steps.collect.outputs) }}'
+            processed_images=$(echo "$images" | jq -r 'to_entries | map(.value | fromjson) | tostring')
+            echo $processed_images
+            echo $images
