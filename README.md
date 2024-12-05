@@ -84,14 +84,3 @@ Under your repository settings in /settings/secrets/actions
 - Add `ENAC_IT4R_CD_TOKEN`
 
 This value is provided by ENAC-IT while discussing the hosting agreement.
-
-## Example usage with custom timeout and interval
-
-```
-uses: EPFL-ENAC/epfl-enac-build-push-deploy-action@v1.0.0
-with:
-  ENAC_IT4R_CD_ORG: "epfl-enac"
-  ENAC_IT4R_CD_REPO: "my-app"
-  ENAC_IT4R_CD_TOKEN: ${{ secrets.ENAC_IT4R_CD_TOKEN }}
-  ENAC_IT4R_CD_BUILD_CONTEXT: ["./frontend", "./backend"]
-```
