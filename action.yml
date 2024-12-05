@@ -6,14 +6,44 @@ description:
   uses the docker/metadata-action, docker/build-push-action and a custom
   curl-based deployment action. using a github dispatch event."
 inputs:
-  ENAC_IT4R_CD_environment:
-    description: "Deployment environment"
+  # CD_URI: https://api.github.com/repos/EPFL-ENAC/enack8s-app-config/dispatches
+  ENAC_IT4R_CD_ORG:
+    description: "App deployment org: examples are epfl-enac, epfl-lasur, epfl-resslab"
     required: true
-  ENAC_IT4R_CD_deployment_id:
-    description: "App deployment ID"
+  ENAC_IT4R_CD_REPO:
+    description:
+      "Deployment app repo: examples are resslab-astra-82001-frontend, which corresponds
+      to the frontend of the Astra 82001 project in the resslab org situated
+      in the EPFL-ENAC/enack8s-app-config/epfl-resslab/resslab-astra-82001-frontend"
     required: true
-  ENAC_IT4R_CD_deployment_secret:
-    description: "App deployment secret"
+  ENAC_IT4R_CD_TOKEN:
+    description: "App deployment secret given by the IT4R team enacit4research@epfl.ch"
+    required: true
+  ENAC_IT4R_CD_BUILD_CONTEXT:
+    description:
+      'The context of the build, e.g. a list of directory paths to include
+      in the build where the Dockerfile is located, for instances:
+      ["./backend", "./admin", "./frontend"]
+      which will result in the following matrix automatically:
+      {
+              "Dockerfile": "./backend/Dockerfile",
+              "context": "./backend",
+              "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/backend",
+              "id": 1
+            },
+            {
+              "Dockerfile": "./admin/Dockerfile",
+              "context": "./admin",
+              "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/admin",
+              "id": 2
+            },
+            {
+              "Dockerfile": "./frontend/Dockerfile",
+              "context": "./frontend",
+              "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/frontend",
+              "id": 3
+            }
+        '
     required: true
 runs:
   using: "composite"
