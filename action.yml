@@ -28,7 +28,7 @@ inputs:
       ["./backend", "./admin", "./frontend"], default is ["./"]
       cf readme.md for more information
     required: false
-    default: '["."]'
+    default: '["./"]'
 runs:
   steps:
     - name: Checkout code
