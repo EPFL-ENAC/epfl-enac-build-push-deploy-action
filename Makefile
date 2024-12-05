@@ -37,7 +37,7 @@ uninstall-python-deps: confirm-python
 clean: uninstall-python-deps  uninstall-node-prettier
 
 run:
-	act -W .github/workflows/example_workflow.yml -s GITHUB_TOKEN=$(cat .secrets | grep GITHUB_TOKEN | cut -d '=' -f2) --env-file .env --eventpath event.json
+	act -W action.yml -s GITHUB_TOKEN=$(cat .secrets | grep GITHUB_TOKEN | cut -d '=' -f2) --env-file .env --eventpath event.json
 
 $(VENV_DIR)/bin/activate: 
 		python3 -m venv $(VENV_DIR)
