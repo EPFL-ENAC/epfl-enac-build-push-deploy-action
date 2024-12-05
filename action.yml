@@ -25,29 +25,8 @@ inputs:
     description: >
       The context of the build, e.g. a list of directory paths to include
       in the build where the Dockerfile is located, for instances:
-      ["./backend", "./admin", "./frontend"], default is ["."]
-      which will result in the following matrix automatically:
-      ```json
-      [{
-              "Dockerfile": "./backend/Dockerfile",
-              "context": "./backend",
-              "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/backend",
-              "id": 1
-            },
-            {
-              "Dockerfile": "./admin/Dockerfile",
-              "context": "./admin",
-              "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/admin",
-              "id": 2
-            },
-            {
-              "Dockerfile": "./frontend/Dockerfile",
-              "context": "./frontend",
-              "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/frontend",
-              "id": 3
-            }
-            ]
-      ```
+      ["./backend", "./admin", "./frontend"], default is ["./"]
+      cf readme.md for more information
     required: false
     default: '["./"]'
 runs:
