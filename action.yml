@@ -36,7 +36,7 @@ runs:
       uses: actions/checkout@v4
 
     - name: Call deploy.yml
-      uses: ".github/workflows/deploy.yml"
+      uses: "./.github/workflows/deploy.yml"
       with:
         org: ${{ inputs.ENAC_IT4R_CD_ORG }}
         repo: ${{ inputs.ENAC_IT4R_CD_REPO }}
