@@ -41,5 +41,4 @@ runs:
         org: ${{ inputs.ENAC_IT4R_CD_ORG }}
         repo: ${{ inputs.ENAC_IT4R_CD_REPO }}
         build_context: ${{ inputs.ENAC_IT4R_CD_BUILD_CONTEXT }}
-      secrets:
         token: ${{ inputs.ENAC_IT4R_CD_TOKEN }}
