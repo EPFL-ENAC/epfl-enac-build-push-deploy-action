@@ -1,6 +1,10 @@
 ---
-name: "EPFL ENAC-IT4R Deploy"
-description: "EPFL ENAC-IT4R Deployment"
+name: "EPFL ENAC-IT4R Build Publish and Deploy"
+description:
+  "This action builds, publishes and deploys an application to the EPFL-ENAC
+  IT4R platform, which is a Kubernetes cluster. It is a composite action that
+  uses the docker/metadata-action, docker/build-push-action and a custom
+  curl-based deployment action. using a github dispatch event."
 inputs:
   ENAC_IT4R_CD_environment:
     description: "Deployment environment"
@@ -11,40 +15,29 @@ inputs:
   ENAC_IT4R_CD_deployment_secret:
     description: "App deployment secret"
     required: true
-  interval:
-    description: "Polling interval in seconds"
-    required: false
-    default: "2"
-  timeout:
-    description: "Timeout before giving up in seconds"
-    required: false
-    default: "480"
 runs:
   using: "composite"
   steps:
-  - name: Checkout epfl-enac-deploy-action
-    uses: actions/checkout@v3
-    with:
-      repository: EPFL-ENAC/epfl-enac-deploy-action
-      ref: main
-      path: epfl-enac-deploy-action
+    - name: Checkout epfl-enac-deploy-action
+      uses: actions/checkout@v3
+      with:
+        repository: EPFL-ENAC/epfl-enac-deploy-action
+        ref: main
+        path: epfl-enac-deploy-action
 
-  - name: Set up Python 3.10
-    uses: actions/setup-python@v4
-    with:
-      python-version: '3.10'
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
 
-  - name: Install dependencies from requirements.txt
-    shell: bash
-    run: |
-      pip install -r epfl-enac-deploy-action/requirements.txt
+    - name: Install dependencies from requirements.txt
+      shell: bash
+      run: |
+        pip install -r epfl-enac-deploy-action/requirements.txt
 
-  - name: Run Python script main.py
-    shell: bash
-    env:
-      DEPLOYMENT_SECRET: ${{ inputs.ENAC_IT4R_CD_deployment_secret }}
-    run: python epfl-enac-deploy-action/main.py
-      --env ${{ inputs.ENAC_IT4R_CD_environment }}
-      --deployment-id ${{ inputs.ENAC_IT4R_CD_deployment_id }}
-      --interval ${{ inputs.interval }}
-      --timeout ${{ inputs.timeout }}
+    - name: Run Python script main.py
+      shell: bash
+      env:
+        DEPLOYMENT_SECRET: ${{ inputs.ENAC_IT4R_CD_deployment_secret }}
+      run: |
+        echo "new deployment method to be implemented"
