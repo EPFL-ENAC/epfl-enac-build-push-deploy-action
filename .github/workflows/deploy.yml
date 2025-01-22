@@ -37,6 +37,7 @@ jobs:
         id: set-matrix
         shell: bash
         run: |
+          repo_owner_lower=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]');
           input_json=${{ toJson(inputs.build_context) }};
           # Transform the JSON array
           echo $input_json;
@@ -44,7 +45,7 @@ jobs:
               Dockerfile: (if .value != "./" then (.value + "/Dockerfile") else ("./Dockerfile") end),
               context: .value,
               name: (if .value != "./" then .value | split("/")[1] else "${{env.CD_REPO}}" end),
-              image: ("ghcr.io/" + "${{toLower(github.repository_owner)}}" + "/" + "${{env.CD_ORG}}" + "/" + (if .value != "./" then .value | ("${{env.CD_REPO}}" + "/" +  split("/")[1]) else "${{env.CD_REPO}}" end)),
+              image: ("ghcr.io/" + repo_owner_lower + "/" + "${{env.CD_ORG}}" + "/" + (if .value != "./" then .value | ("${{env.CD_REPO}}" + "/" +  split("/")[1]) else "${{env.CD_REPO}}" end)),
               id: (.key + 1)
           })')  
           echo "matrix=$output_json" >> "$GITHUB_OUTPUT"
