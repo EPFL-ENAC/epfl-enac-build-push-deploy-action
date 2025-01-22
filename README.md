@@ -1,6 +1,6 @@
 # EPFL ENAC-IT Continuous Deployment
 
-This action implements ENAC-IT's Continuous Deployment for your app on a given environment (dev, test, stage or prod).
+This action implements ENAC-IT's Continuous Deployment for your app on a given environment (dev, test, stage or prod). It can be used in EPFL-ENAC repositories, as well as any other repositories owned by other organizations.
 
 - if you push on the *dev* branch, it will update the images on the overlay dev in your enack8s-app-config
 - if you push on the *test* branch, same but overlay *test*
@@ -29,7 +29,7 @@ name: deploy
 
 jobs:
   deploy:
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v2.0.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v2.1.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -59,7 +59,7 @@ name: deploy
 
 jobs:
   deploy:
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v2.0.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v2.1.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -79,7 +79,7 @@ jobs:
     - Currently we support max 9 contexts/ or build image per repository
     - The context is the path to the directory containing the Dockerfile. For example: 
       ["./backend", "./admin", "./frontend"], default is ["."]
-    - This will result in the following matrix automatically:
+    - This will result in the following matrix automatically, where `epfl-enac` would be replaced by the repository owner name (in lowercase):
     ```json
     [
       {
