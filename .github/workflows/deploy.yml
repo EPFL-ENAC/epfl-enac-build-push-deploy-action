@@ -44,7 +44,7 @@ jobs:
               Dockerfile: (if .value != "./" then (.value + "/Dockerfile") else ("./Dockerfile") end),
               context: .value,
               name: (if .value != "./" then .value | split("/")[1] else "${{env.CD_REPO}}" end),
-              image: ("ghcr.io/epfl-enac/" + "${{env.CD_ORG}}" + "/" + (if .value != "./" then .value | ("${{env.CD_REPO}}" + "/" +  split("/")[1]) else "${{env.CD_REPO}}" end)),
+              image: ("ghcr.io/" + "${{vars.ORGANIZATION_VARIABLE}}" + "/" + "${{env.CD_ORG}}" + "/" + (if .value != "./" then .value | ("${{env.CD_REPO}}" + "/" +  split("/")[1]) else "${{env.CD_REPO}}" end)),
               id: (.key + 1)
           })')  
           echo "matrix=$output_json" >> "$GITHUB_OUTPUT"
