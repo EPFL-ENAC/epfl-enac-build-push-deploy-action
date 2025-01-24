@@ -149,6 +149,10 @@ jobs:
             echo "branch=dev" >> $GITHUB_OUTPUT
             echo "branch=dev"
           fi
+          if [[ "${{github.ref}}" == refs/heads/develop ]]; then
+            echo "branch=dev" >> $GITHUB_OUTPUT
+            echo "branch=dev (src:develop => dst:dev)"
+          fi
           if [[ "${{github.ref}}" == refs/heads/test ]]; then
             echo "branch=test" >> $GITHUB_OUTPUT
             echo "branch=test"
