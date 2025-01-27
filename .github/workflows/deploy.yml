@@ -14,6 +14,10 @@ on:
         required: false
         type: string
         default: '["./"]'
+      create_pull_request:
+        required: false
+        type: boolean
+        default: false
     secrets:
       token:
         required: true
@@ -22,6 +26,7 @@ env:
   REGISTRY: ghcr.io
   CD_ORG: ${{ inputs.org }}
   CD_REPO: ${{ inputs.repo }}
+  CREATE_PULL_REQUEST: ${{ inputs.create_pull_request }}
   CD_URI: https://api.github.com/repos/EPFL-ENAC/enack8s-app-config/dispatches
 
 # proper way of doing matrix builds: https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/running-variations-of-jobs-in-a-workflow
@@ -171,7 +176,8 @@ jobs:
               "repo_name": "${{ env.CD_REPO }}",
               "repo_org": "${{ env.CD_ORG }}",
               "branch": "${{ steps.set-branch.outputs.branch }}",
-              "images": ${{ steps.aggregate.outputs.images }}
+              "images": ${{ steps.aggregate.outputs.images }},
+              "create_pull_request": ${{ env.CREATE_PULL_REQUEST }}
             }
           }
           EOF
