@@ -114,7 +114,9 @@ jobs:
             }
         ]
     ```
-   
+  - `create_pull_request`:
+    - Create a pull request in the enack8s-app-config repository - (optional)
+    - Default is false, if you create a tag, it will automatically push to main without creating a PR, and deploy within the prod overlay in 5mn or so. 
 ## Create one secrets in your repository
 
 Under your repository settings in /settings/secrets/actions
