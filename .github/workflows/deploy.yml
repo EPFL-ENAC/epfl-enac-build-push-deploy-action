@@ -21,6 +21,8 @@ on:
     secrets:
       token:
         required: true
+      private_key:
+        required: false
 
 env:
   REGISTRY: ghcr.io
@@ -112,6 +114,8 @@ jobs:
           file: ${{ matrix.dockerfile }}
           tags: ${{ steps.meta.outputs.tags }},${{ matrix.image }}:${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SSH_PRIVATE_KEY=${{ secrets.private_key }}
 
       - name: Collect Image Data
         id: collect
