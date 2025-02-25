@@ -10,7 +10,7 @@ This action implements ENAC-IT's Continuous Deployment for your app on a given e
 To use it in your repository, create a workflow file named `.github/workflows/deploy.yml` with the following content:
 
 
-## for repository with one image
+## For repository with one image
 
 You need to have a Dockerfile at the root of your repository, that's it,
 The image pushed to the registry will follow org/repo convention: ghcr.io/epfl-enac/epfl-luts/app-test:{sha256}
@@ -36,7 +36,8 @@ jobs:
       org: epfl-luts # your org
       repo: app-test # your app name, usual convention is name of your repository
 ```
-## for repository with multi images
+
+## For repository with multi images
 
 You need to pass an additional inputs: 'build_context' which is a list of directories with a Dockerfile in it.
 The images pushed to the registry will follow org/repo convention: 
@@ -67,6 +68,59 @@ jobs:
       repo: arema # your app name, usual convention is name of your repository
       build_context: '["./backend", "./admin", "./frontend"]'
 ```
+
+## For a private repository
+
+If your repository is private, you will need to provide Github action with a SSH key pair. The public key should be added to the repository's deploy keys, and the private key should be added to the repository's secrets.
+
+1. Make a key pair with NO password
+
+```
+ssh-keygen -t ed25519 -C "github-actions@github.com"
+```
+
+2. Register this key pair with your personal account **Settings > SSH and GPG keys**
+
+3. Usage example:
+
+```yml
+jobs:
+  deploy:
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@ssh
+    secrets:
+      token: ${{ secrets.CD_TOKEN }}
+      private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+    with:
+      # Optional inputs can be passed here
+      org: epfl-lasur
+      repo: ws
+      build_context: '["./"]'
+```
+
+where SSH_PRIVATE_KEY is defined in the private repo's **Settings > Secrets and variables > Actions** and public key was added to private repo's **Settings > Deploy keys**
+
+Note: the SSH private key value MUST be on a single line, then use `base64 -w 0` to encode it. Further usage in the Dockerfile will decode it using `base64 -d`
+
+Dockerfile example:
+
+```dockerfile
+# Install openssh-client
+RUN apt-get update && apt-get install -y openssh-client git
+
+# Add build argument for SSH key
+ARG SSH_PRIVATE_KEY
+
+# Set up SSH
+RUN mkdir -p /root/.ssh && \
+    echo "${SSH_PRIVATE_KEY}" | base64 -d > /root/.ssh/id_ed25519 && \
+    chmod 600 /root/.ssh/id_ed25519 && \
+    # Accept host keys automatically
+    echo "StrictHostKeyChecking no" >> /root/.ssh/config
+
+# Perform actions requiring private repo access
+# ...
+```
+
 ## Inputs
   - `org`:
     The organization name given by ENAC-IT - (mandatory)
