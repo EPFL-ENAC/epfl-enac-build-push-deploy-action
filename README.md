@@ -69,9 +69,9 @@ jobs:
       build_context: '["./backend", "./admin", "./frontend"]'
 ```
 
-## For a private repository
+## For a repository that depends on a private repository
 
-If your repository is private, you will need to provide Github action with a SSH key pair. The public key should be added to the repository's deploy keys, and the private key should be added to the repository's secrets.
+If your repository depends on some dependency in a private repository, you will need to provide Github action with a SSH key pair, that will be used in the Docker build. The public key should be added to the repository's deploy keys, and the private key should be added to the repository's secrets.
 
 1. Make a key pair with NO password
 
@@ -119,6 +119,9 @@ RUN mkdir -p /root/.ssh && \
 
 # Perform actions requiring private repo access
 # ...
+
+# Important: Remove the SSH key when no longer needed
+RUN rm -rf /root/.ssh/
 ```
 
 ## Inputs
