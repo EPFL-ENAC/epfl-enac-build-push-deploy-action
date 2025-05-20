@@ -129,6 +129,9 @@ RUN rm -rf /root/.ssh/
     The organization name given by ENAC-IT - (mandatory)
   - `repo`:
     The repository name given by ENAC-IT - (mandatory)
+  - `lfs`:
+    - Enable Git LFS support - (optional)
+    - Default is false
   - `token`:
     The secret associated with the deployment_id - (mandatory)
   - `build_context`:
@@ -239,7 +242,7 @@ The client_payload object contains several options that control how the manifest
         }
 
 - Workflow Behavior
-  1) Checkout Repository: The workflow checks out the repository to the latest commit.
+  1) Checkout Repository: The workflow checks out the repository to the latest commit. Git LFS support can be activated if needed (case of some data files are included within the repository).
   2) Install Dependencies: Installs necessary dependencies such as git, wget, curl, jq, and yq.
   3) Modify Manifest:
     - Navigates to the specified repository and branch.
