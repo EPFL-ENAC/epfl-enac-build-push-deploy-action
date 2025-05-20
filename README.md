@@ -29,6 +29,9 @@ name: deploy
 
 jobs:
   deploy:
+    permissions:
+      contents: read
+      packages: write
     uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v2.4.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
@@ -60,6 +63,9 @@ name: deploy
 
 jobs:
   deploy:
+    permissions:
+      contents: read
+      packages: write
     uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v2.4.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
