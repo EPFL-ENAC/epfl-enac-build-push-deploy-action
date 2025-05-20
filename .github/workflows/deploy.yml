@@ -10,6 +10,11 @@ on:
       repo:
         required: true
         type: string
+      lfs:
+        # perform git lfs pull at checkout time
+        required: false
+        type: boolean
+        default: false
       build_context:
         required: false
         type: string
@@ -90,6 +95,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          lfs: ${{ inputs.lfs }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
