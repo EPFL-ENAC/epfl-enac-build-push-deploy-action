@@ -40,6 +40,23 @@ jobs:
       repo: app-test # your app name, usual convention is name of your repository
 ```
 
+Optional: override the image name when the build context is the repository root ("./"). This is useful for complex repos where the default name (repo) does not match the desired image name.
+
+```yml
+jobs:
+  deploy:
+    permissions:
+      contents: read
+      packages: write
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v2.4.0
+    secrets:
+      token: ${{ secrets.CD_TOKEN }}
+    with:
+      org: epfl-luts
+      repo: app-test
+      image_name: custom-api # will produce ghcr.io/<owner>/epfl-luts/custom-api
+```
+
 ## For repository with multi images
 
 You need to pass an additional inputs: 'build_context' which is a list of directories with a Dockerfile in it.
@@ -48,6 +65,7 @@ The images pushed to the registry will follow org/repo convention:
   - ghcr.io/epfl-enac/ethz-alice/arema/admin:{sha256}
   - ghcr.io/epfl-enac/ethz-alice/arema/frontend:{sha256}
 
+Note: image_name only applies to the "./" build context. It does not change names for subdirectory contexts like "./backend", "./admin", etc.
 
 ```yml
 # https://github.com/EPFL-ENAC/epfl-enac-build-push-deploy-action#readme
@@ -149,37 +167,43 @@ RUN rm -rf /root/.ssh/
     ```json
     [
       {
-              "Dockerfile": "./backend/Dockerfile",
-              "context": "./backend",
-              "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/backend",
-              "id": 1
-            },
-            {
-              "Dockerfile": "./admin/Dockerfile",
-              "context": "./admin",
-              "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/admin",
-              "id": 2
-            },
-            {
-              "Dockerfile": "./frontend/Dockerfile",
-              "context": "./frontend",
-              "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/frontend",
-              "id": 3
-            }
-        ]
+        "Dockerfile": "./backend/Dockerfile",
+        "context": "./backend",
+        "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/backend",
+        "id": 1
+      },
+      {
+        "Dockerfile": "./admin/Dockerfile",
+        "context": "./admin",
+        "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/admin",
+        "id": 2
+      },
+      {
+        "Dockerfile": "./frontend/Dockerfile",
+        "context": "./frontend",
+        "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/frontend",
+        "id": 3
+      }
+    ]
     ```
     - in the default case (no context provided: will be ["."]), the matrix will be:
     ```json
     [
       {
-              "Dockerfile": "./Dockerfile",
-              "context": ".",
-              "name": "${{ENAC_IT4R_CD_REPO}}",
-              "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}",
-              "id": 1
-            }
-        ]
+        "Dockerfile": "./Dockerfile",
+        "context": ".",
+        "name": "${{ENAC_IT4R_CD_REPO}}",
+        "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}",
+        "id": 1
+      }
+    ]
     ```
+  - `image_name`:
+    - Override the image name when the build context is "./" or "." only - (optional)
+    - Default is empty (""), which means use the `repo` value (`CD_REPO`)
+    - When set, the image built from the root context will be named:
+      `ghcr.io/<owner-lowercased>/<org>/<image_name>`
+    - Has no effect on subdirectory contexts (e.g., "./backend")
   - `create_pull_request`:
     - Create a pull request in the enack8s-app-config repository - (optional)
     - Default is false, if you create a tag, it will automatically push to main without creating a PR, and deploy within the prod overlay in 5mn or so. 
