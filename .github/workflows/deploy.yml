@@ -61,22 +61,25 @@ jobs:
           # Transform the JSON array
           echo "${{env.OWNER}}";
           echo $input_json;
-          output_json=$(echo $input_json | jq -c 'to_entries | map({
-              Dockerfile: (if .value != "./" then (.value + "/Dockerfile") else ("./Dockerfile") end),
-              context: .value,
-              name: (if .value != "./"
-                      then .value | split("/")[1]
-                      else (if "${{ env.IMAGE_NAME }}" != "" then "${{ env.IMAGE_NAME }}" else "${{ env.CD_REPO }}" end)
-                    end),
-              image: ("ghcr.io/" + "${{env.OWNER}}" + "/" + "${{env.CD_ORG}}" + "/" +
-                      (if .value != "./"
-                        then .value | ("${{env.CD_REPO}}" + "/" + split("/")[1])
-                        else (if "${{ env.IMAGE_NAME }}" != "" then "${{ env.IMAGE_NAME }}" else "${{ env.CD_REPO }}" end)
-                      end)),
-              id: (.key + 1)
-          })')  
+          output_json=$(echo "$input_json" | jq -c 'to_entries | map(
+            (.value | rtrimstr("/")) as $ctx
+            | ($ctx == "." or $ctx == "./") as $root
+            | ($ctx | split("/") | .[-1]) as $leaf
+            | {
+                Dockerfile: (if $root then "./Dockerfile" else ($ctx + "/Dockerfile") end),
+                context: $ctx,
+                name: (if $root
+                       then (if "${{ env.IMAGE_NAME }}" != "" then "${{ env.IMAGE_NAME }}" else "${{ env.CD_REPO }}" end)
+                       else $leaf end),
+                image: ("ghcr.io/" + "${{ env.OWNER }}" + "/" + "${{ env.CD_ORG }}" + "/" +
+                        (if $root
+                         then (if "${{ env.IMAGE_NAME }}" != "" then "${{ env.IMAGE_NAME }}" else "${{ env.CD_REPO }}" end)
+                         else ("${{ env.CD_REPO }}" + "/" + $leaf) end)),
+                id: (.key + 1)
+              }
+          )')
           echo "matrix=$output_json" >> "$GITHUB_OUTPUT"
-          echo $output_json
+          echo "$output_json"
 
       - name: Echo matrix
         shell: bash

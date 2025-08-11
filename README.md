@@ -40,7 +40,7 @@ jobs:
       repo: app-test # your app name, usual convention is name of your repository
 ```
 
-Optional: override the image name when the build context is the repository root ("./"). This is useful for complex repos where the default name (repo) does not match the desired image name.
+Optional: override the image name when the build context is the repository root ("./" or "."). This is useful for complex repos where the default name (repo) does not match the desired image name.
 
 ```yml
 jobs:
@@ -54,18 +54,19 @@ jobs:
     with:
       org: epfl-luts
       repo: app-test
-      image_name: custom-api # will produce ghcr.io/<owner>/epfl-luts/custom-api
+      image_name: custom-api # will produce ghcr.io/<owner-lowercased>/epfl-luts/custom-api for root context
 ```
 
 ## For repository with multi images
 
-You need to pass an additional inputs: 'build_context' which is a list of directories with a Dockerfile in it.
-The images pushed to the registry will follow org/repo convention: 
-  - ghcr.io/epfl-enac/ethz-alice/arema/backend:{sha256}
-  - ghcr.io/epfl-enac/ethz-alice/arema/admin:{sha256}
-  - ghcr.io/epfl-enac/ethz-alice/arema/frontend:{sha256}
+Pass an additional input: `build_context` which is a list of directories with a Dockerfile in each.
+- The image names are derived automatically from the last path segment of each context.
+  - Example: "./modules/auth" -> image name "auth"
+  - Example: "./auth" -> image name "auth"
+- The full image path becomes: ghcr.io/<owner-lowercased>/<org>/<repo>/<name>
+- Note: `image_name` only applies to the root context ("./" or "."); it does not change names for subdirectory contexts.
 
-Note: image_name only applies to the "./" build context. It does not change names for subdirectory contexts like "./backend", "./admin", etc.
+Example:
 
 ```yml
 # https://github.com/EPFL-ENAC/epfl-enac-build-push-deploy-action#readme
@@ -90,8 +91,14 @@ jobs:
     with:
       org: ethz-alice # your org
       repo: arema # your app name, usual convention is name of your repository
-      build_context: '["./backend", "./admin", "./frontend"]'
+      build_context: '["./modules/auth", "./modules/organization", "./modules/projects", "./modules/router"]'
 ```
+
+The images pushed to the registry will be:
+  - ghcr.io/epfl-enac/ethz-alice/arema/auth:{sha256}
+  - ghcr.io/epfl-enac/ethz-alice/arema/organization:{sha256}
+  - ghcr.io/epfl-enac/ethz-alice/arema/projects:{sha256}
+  - ghcr.io/epfl-enac/ethz-alice/arema/router:{sha256}
 
 ## For a repository that depends on a private repository
 
@@ -161,7 +168,7 @@ RUN rm -rf /root/.ssh/
   - `build_context`:
     - The context of the build - (optional)
     - Currently we support max 9 contexts/ or build image per repository
-    - The context is the path to the directory containing the Dockerfile. For example: 
+    - The context is the path to the directory containing the Dockerfile. For example:
       ["./backend", "./admin", "./frontend"], default is ["."]
     - This will result in the following matrix automatically, where `epfl-enac` would be replaced by the repository owner name (in lowercase):
     ```json
@@ -169,24 +176,27 @@ RUN rm -rf /root/.ssh/
       {
         "Dockerfile": "./backend/Dockerfile",
         "context": "./backend",
+        "name": "backend",
         "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/backend",
         "id": 1
       },
       {
         "Dockerfile": "./admin/Dockerfile",
         "context": "./admin",
+        "name": "admin",
         "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/admin",
         "id": 2
       },
       {
         "Dockerfile": "./frontend/Dockerfile",
         "context": "./frontend",
+        "name": "frontend",
         "image": "ghcr.io/epfl-enac/${{ENAC_IT4R_CD_ORG}}/${{ENAC_IT4R_CD_REPO}}/frontend",
         "id": 3
       }
     ]
     ```
-    - in the default case (no context provided: will be ["."]), the matrix will be:
+    - in the default case (no context provided: will be ["."] or ["./"]), the matrix will be:
     ```json
     [
       {
@@ -198,12 +208,13 @@ RUN rm -rf /root/.ssh/
       }
     ]
     ```
+    - Note: "." and "./" are treated the same.
   - `image_name`:
     - Override the image name when the build context is "./" or "." only - (optional)
     - Default is empty (""), which means use the `repo` value (`CD_REPO`)
     - When set, the image built from the root context will be named:
       `ghcr.io/<owner-lowercased>/<org>/<image_name>`
-    - Has no effect on subdirectory contexts (e.g., "./backend")
+    - Has no effect on subdirectory contexts (e.g., "./modules/auth")
   - `create_pull_request`:
     - Create a pull request in the enack8s-app-config repository - (optional)
     - Default is false, if you create a tag, it will automatically push to main without creating a PR, and deploy within the prod overlay in 5mn or so. 
