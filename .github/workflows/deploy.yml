@@ -4,6 +4,10 @@ name: deploy
 on:
   workflow_call:
     inputs:
+      argo_repository:
+          required: false
+          type: string
+          default: "EPFL-ENAC/enack8s-app-config"
       org:
         required: true
         type: string
@@ -39,7 +43,7 @@ env:
   CD_REPO: ${{ inputs.repo }}
   IMAGE_NAME: ${{ inputs.image_name }}
   CREATE_PULL_REQUEST: ${{ inputs.create_pull_request }}
-  CD_URI: https://api.github.com/repos/EPFL-ENAC/enack8s-app-config/dispatches
+  CD_URI: https://api.github.com/repos/${{ inputs.argo_repository }}/dispatches
 
 # proper way of doing matrix builds: https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/running-variations-of-jobs-in-a-workflow
 

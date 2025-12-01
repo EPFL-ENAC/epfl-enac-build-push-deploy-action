@@ -38,6 +38,7 @@ jobs:
     with:
       org: epfl-luts # your org
       repo: app-test # your app name, usual convention is name of your repository
+      argo_repository: EPFL-ENAC/openshift-app-config # optional, default is EPFL-ENAC/enack8s-app-config
 ```
 
 Optional: override the image name when the build context is the repository root ("./" or "."). This is useful for complex repos where the default name (repo) does not match the desired image name.
