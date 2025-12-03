@@ -32,13 +32,13 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v2.4.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v2.6.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
       org: epfl-luts # your org
       repo: app-test # your app name, usual convention is name of your repository
-      argo_repository: EPFL-ENAC/openshift-app-config # optional, default is EPFL-ENAC/enack8s-app-config
+      argo_repository: "['EPFL-ENAC/enack8s-app-config', 'EPFL-ENAC/openshift-app-config']" # optional, default is "['EPFL-ENAC/enack8s-app-config']"
 ```
 
 Optional: override the image name when the build context is the repository root ("./" or "."). This is useful for complex repos where the default name (repo) does not match the desired image name.
