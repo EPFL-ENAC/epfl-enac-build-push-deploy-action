@@ -7,7 +7,7 @@ on:
       argo_repository:
           required: false
           type: string
-          default: "EPFL-ENAC/enack8s-app-config"
+          default: '["EPFL-ENAC/enack8s-app-config"]'
       org:
         required: true
         type: string
@@ -43,7 +43,6 @@ env:
   CD_REPO: ${{ inputs.repo }}
   IMAGE_NAME: ${{ inputs.image_name }}
   CREATE_PULL_REQUEST: ${{ inputs.create_pull_request }}
-  CD_URI: https://api.github.com/repos/${{ inputs.argo_repository }}/dispatches
 
 # proper way of doing matrix builds: https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/running-variations-of-jobs-in-a-workflow
 
@@ -161,6 +160,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        argo_repository: ${{ fromJson(inputs.argo_repository) }}
     steps:
       # pretty much impossible to use multiple outputs in a matrix build
       # https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/passing-information-between-jobs#using-job-outputs-in-a-matrix-job
@@ -216,5 +219,5 @@ jobs:
           echo "Payload: $payload" && \
           curl -X POST \
           -H "Authorization: Bearer ${{ secrets.token }}" \
-          ${{ env.CD_URI }} \
+          https://api.github.com/repos/${{ matrix.argo_repository }}/dispatches \
           -d "$payload"
