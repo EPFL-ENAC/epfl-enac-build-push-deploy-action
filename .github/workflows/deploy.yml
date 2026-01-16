@@ -43,6 +43,14 @@ on:
         required: false
         type: string
         default: "${{ github.actor }}"
+      helm_chart_name:
+        required: false
+        type: string
+        default: ""
+      helm_chart_version:
+        required: false
+        type: string
+        default: ""
     secrets:
       token:
         required: true
@@ -228,6 +236,10 @@ jobs:
             echo "branch=stage" >> $GITHUB_OUTPUT
             echo "branch=stage"
           fi
+          if [[ "${{github.ref}}" == refs/heads/ci-test/* ]]; then
+            echo "branch=dev" >> $GITHUB_OUTPUT
+            echo "branch=dev (src:ci-test => dst:dev)"
+          fi
       - name: Deploy application
         if: steps.set-branch.outputs.branch != ''
         run: |
@@ -239,7 +251,9 @@ jobs:
               "repo_org": "${{ env.CD_ORG }}",
               "branch": "${{ steps.set-branch.outputs.branch }}",
               "images": ${{ steps.aggregate.outputs.images }},
-              "create_pull_request": ${{ env.CREATE_PULL_REQUEST }}
+              "create_pull_request": ${{ env.CREATE_PULL_REQUEST }},
+              "helm_chart_name": "${{ inputs.helm_chart_name }}",
+              "helm_chart_version": "${{ inputs.helm_chart_version }}"
             }
           }
           EOF
