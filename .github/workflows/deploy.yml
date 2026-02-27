@@ -167,6 +167,24 @@ jobs:
         with:
           images: ${{ matrix.image }}
 
+      - name: Build Docker image EPFL-ENAC.Agent.Service (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          tags: ${{ steps.meta.outputs.tags }},${{ matrix.image }}:${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SSH_PRIVATE_KEY=${{ secrets.private_key }}
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ matrix.image }}:${{ github.sha }}
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          
       - name: Build and push Docker image EPFL-ENAC.Agent.Service
         id: build-docker-push
         uses: docker/build-push-action@v6
