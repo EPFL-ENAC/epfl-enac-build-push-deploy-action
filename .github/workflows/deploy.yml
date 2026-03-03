@@ -51,6 +51,10 @@ on:
         required: false
         type: string
         default: ""
+      skip_vulnerability_scan:
+        required: false
+        type: boolean
+        default: false
     secrets:
       token:
         required: true
@@ -167,7 +171,8 @@ jobs:
         with:
           images: ${{ matrix.image }}
 
-      - name: Build Docker image EPFL-ENAC.Agent.Service (no push)
+      - name: Build Docker image for security scan (no push)
+        if: inputs.skip_vulnerability_scan == false
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
@@ -178,6 +183,7 @@ jobs:
             SSH_PRIVATE_KEY=${{ secrets.private_key }}
 
       - name: Scan image with Trivy
+        if: inputs.skip_vulnerability_scan == false
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: ${{ matrix.image }}:${{ github.sha }}
