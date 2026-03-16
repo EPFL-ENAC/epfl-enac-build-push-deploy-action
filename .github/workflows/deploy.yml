@@ -8,6 +8,7 @@ on:
         required: false
         type: string
         default: '["EPFL-ENAC/enack8s-app-config"]'
+        description: 'JSON array of argo repos (legacy, used when registries is not set)'
       org:
         required: true
         type: string
@@ -31,6 +32,15 @@ on:
         required: false
         type: boolean
         default: false
+      registries:
+        required: false
+        type: string
+        default: ""
+        description: |
+          JSON array of registry configs for multi-registry push.
+          Each entry: {"registry":"ghcr.io","registry_path":"","registry_username":"","argo_repositories":["EPFL-ENAC/enack8s-app-config"]}
+          First non-ghcr registry uses registry_token secret, second uses registry_token_2.
+          If empty, falls back to single registry/registry_path/registry_username inputs.
       registry:
         required: false
         type: string
@@ -62,6 +72,8 @@ on:
         required: false
       registry_token:
         required: false
+      registry_token_2:
+        required: false
 
 env:
   CD_ORG: ${{ inputs.org }}
@@ -69,13 +81,17 @@ env:
   IMAGE_NAME: ${{ inputs.image_name }}
   CREATE_PULL_REQUEST: ${{ inputs.create_pull_request }}
 
-# proper way of doing matrix builds: https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/running-variations-of-jobs-in-a-workflow
+# Architecture: build once → push to N registries → update N manifest repos
+# Docker layers are cached via GitHub Actions cache (type=gha) so push jobs rebuild instantly from cache.
+# https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/running-variations-of-jobs-in-a-workflow
 
 jobs:
   define-matrix:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      build_matrix: ${{ steps.set-matrix.outputs.build_matrix }}
+      push_matrix: ${{ steps.set-matrix.outputs.push_matrix }}
+      manifest_matrix: ${{ steps.set-matrix.outputs.manifest_matrix }}
     steps:
       - name: lowercase repo owner
         run: |
@@ -88,82 +104,186 @@ jobs:
           echo $IMAGE_NAME;
           echo "IMAGE_NAME=\"$IMAGE_NAME\"" >> ${GITHUB_ENV};
 
-      - name: build matrix from build_context
+      - name: Build matrices
         id: set-matrix
         shell: bash
         run: |
+          # --- Determine registries configuration ---
+          registries_input='${{ inputs.registries }}'
+          if [ -z "$registries_input" ]; then
+            # Fallback: build from legacy single-registry inputs
+            registries_json='[{"registry":"${{ inputs.registry }}","registry_path":"${{ inputs.registry_path }}","registry_username":"${{ inputs.registry_username }}","argo_repositories":${{ inputs.argo_repository }}}]'
+          else
+            registries_json="$registries_input"
+          fi
+          echo "Registries: $registries_json"
+
+          # --- Build matrix (registry-agnostic) ---
           input_json=${{ toJson(inputs.build_context) }};
-          # Transform the JSON array
-          echo "OWNER: ${{env.OWNER}}";
-          echo "IMAGE_NAME: ${{env.IMAGE_NAME}}";
-          echo $input_json;
-          output_json=$(echo "$input_json" | jq -c 'to_entries | map(
+          echo "Build contexts: $input_json";
+          build_matrix=$(echo "$input_json" | jq -c 'to_entries | map(
             (.value | rtrimstr("/")) as $ctx
             | ($ctx == "." or $ctx == "./") as $root
             | ($ctx | split("/") | .[-1]) as $leaf
             | {
-                Dockerfile: (if $root then "./Dockerfile" else ($ctx + "/Dockerfile") end),
-                context: $ctx,
+                dockerfile: (if $root then "./Dockerfile" else ($ctx + "/Dockerfile") end),
+                context: (if $root then "." else $ctx end),
                 name: (if $root then (${{ env.IMAGE_NAME }}) else $leaf end),
-                image: (if "${{ inputs.registry }}" == "ghcr.io"
-                        then ("${{ inputs.registry }}/${{ env.OWNER }}/${{ env.CD_ORG }}/" +
-                          (if $root then (${{ env.IMAGE_NAME }}) else ("${{ env.CD_REPO }}" + "/" + $leaf) end))
-                        else ("${{ inputs.registry }}/${{ inputs.registry_path }}/" +
-                          (if $root then (${{ env.IMAGE_NAME }}) else ($leaf) end))
-                        end),
                 id: (.key + 1)
               }
           )')
-          echo "matrix=$output_json" >> "$GITHUB_OUTPUT"
-          echo "$output_json"
+          echo "build_matrix=$build_matrix" >> "$GITHUB_OUTPUT"
+          echo "Build matrix: $build_matrix"
 
-      - name: Echo matrix
+          # --- Push matrix (cross-product: build contexts × registries) ---
+          owner="${{ env.OWNER }}"
+          org="${{ env.CD_ORG }}"
+          repo="${{ env.CD_REPO }}"
+          push_matrix=$(echo "$registries_json" | jq -c \
+            --argjson builds "$build_matrix" \
+            --arg owner "$owner" \
+            --arg org "$org" \
+            --arg repo "$repo" \
+            '
+            # Compute sequential index among non-ghcr registries
+            [to_entries[] | select(.value.registry != "ghcr.io")] as $non_ghcr |
+            [
+              to_entries[] | .key as $ri | .value as $reg |
+              (if $reg.registry == "ghcr.io" then 0
+               else ([$non_ghcr | to_entries[] | select(.value.key == $ri)][0].key + 1)
+               end) as $non_ghcr_idx |
+              $builds[] |
+              {
+                dockerfile: .dockerfile,
+                context: .context,
+                name: .name,
+                build_id: .id,
+                registry: $reg.registry,
+                registry_path: ($reg.registry_path // ""),
+                registry_username: ($reg.registry_username // ""),
+                non_ghcr_index: $non_ghcr_idx,
+                image: (
+                  if $reg.registry == "ghcr.io" then
+                    if .context == "." then
+                      ("ghcr.io/" + $owner + "/" + $org + "/" + .name)
+                    else
+                      ("ghcr.io/" + $owner + "/" + $org + "/" + $repo + "/" + .name)
+                    end
+                  else
+                    if (($reg.registry_path // "") | length) > 0 then
+                      ($reg.registry + "/" + $reg.registry_path + "/" + .name)
+                    else
+                      ($reg.registry + "/" + .name)
+                    end
+                  end
+                ),
+                push_id: ("r" + ($ri + 1 | tostring) + "_c" + (.id | tostring))
+              }
+            ]')
+          echo "push_matrix=$push_matrix" >> "$GITHUB_OUTPUT"
+          echo "Push matrix: $push_matrix"
+
+          # --- Manifest matrix (argo repos with their associated registry) ---
+          manifest_matrix=$(echo "$registries_json" | jq -c '[
+            to_entries[] | .value as $reg |
+            ($reg.argo_repositories // [])[] |
+            {
+              argo_repository: .,
+              registry: $reg.registry
+            }
+          ]')
+          echo "manifest_matrix=$manifest_matrix" >> "$GITHUB_OUTPUT"
+          echo "Manifest matrix: $manifest_matrix"
+
+      - name: Echo matrices
         shell: bash
-        id: echo
         run: |
-          echo ${{ steps.set-matrix.outputs.matrix }}
-  build-and-push:
+          echo "Build: ${{ steps.set-matrix.outputs.build_matrix }}"
+          echo "Push: ${{ steps.set-matrix.outputs.push_matrix }}"
+          echo "Manifest: ${{ steps.set-matrix.outputs.manifest_matrix }}"
+
+  build:
     runs-on: ubuntu-latest
     needs: define-matrix
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(needs.define-matrix.outputs.matrix) }}
+        include: ${{ fromJson(needs.define-matrix.outputs.build_matrix) }}
     permissions:
       contents: read
-      packages: write
-    outputs:
-      image_data_1: ${{ steps.collect.outputs.image_data_1 }}
-      image_data_2: ${{ steps.collect.outputs.image_data_2 }}
-      image_data_3: ${{ steps.collect.outputs.image_data_3 }}
-      image_data_4: ${{ steps.collect.outputs.image_data_4 }}
-      image_data_5: ${{ steps.collect.outputs.image_data_5 }}
-      image_data_6: ${{ steps.collect.outputs.image_data_6 }}
-      image_data_7: ${{ steps.collect.outputs.image_data_7 }}
-      image_data_8: ${{ steps.collect.outputs.image_data_8 }}
-      image_data_9: ${{ steps.collect.outputs.image_data_9 }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           lfs: ${{ inputs.lfs }}
 
-      - name: GHCR registry login
-        if: ${{ inputs.registry == 'ghcr.io' }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image (no push)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          load: true
+          tags: local/${{ matrix.name }}:${{ github.sha }}
+          build-args: |
+            SSH_PRIVATE_KEY=${{ secrets.private_key }}
+          cache-from: type=gha,scope=build-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=build-${{ matrix.name }}
+
+      - name: Scan image with Trivy
+        if: inputs.skip_vulnerability_scan == false
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: local/${{ matrix.name }}:${{ github.sha }}
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+
+  push:
+    runs-on: ubuntu-latest
+    needs: [define-matrix, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.define-matrix.outputs.push_matrix) }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: ${{ inputs.lfs }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: matrix.registry == 'ghcr.io'
         uses: docker/login-action@v3
         with:
-          registry: ${{ inputs.registry }}
-          username: ${{ inputs.registry_username }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Or custom registry login
-        if: ${{ inputs.registry != 'ghcr.io' }}
+      - name: Login to custom registry (1st)
+        if: matrix.registry != 'ghcr.io' && matrix.non_ghcr_index == 1
         uses: docker/login-action@v3
         with:
-          registry: ${{ inputs.registry }}
-          username: ${{ inputs.registry_username }}
+          registry: ${{ matrix.registry }}
+          username: ${{ matrix.registry_username || github.actor }}
           password: ${{ secrets.registry_token }}
+
+      - name: Login to custom registry (2nd)
+        if: matrix.registry != 'ghcr.io' && matrix.non_ghcr_index == 2
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ matrix.registry }}
+          username: ${{ matrix.registry_username || github.actor }}
+          password: ${{ secrets.registry_token_2 }}
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
@@ -171,95 +291,87 @@ jobs:
         with:
           images: ${{ matrix.image }}
 
-      - name: Build Docker image for security scan (no push)
-        if: inputs.skip_vulnerability_scan == false
+      - name: Build and push Docker image (from cache)
+        id: push
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
-          tags: ${{ steps.meta.outputs.tags }},${{ matrix.image }}:${{ github.sha }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            SSH_PRIVATE_KEY=${{ secrets.private_key }}
-
-      - name: Scan image with Trivy
-        if: inputs.skip_vulnerability_scan == false
-        uses: aquasecurity/trivy-action@0.20.0
-        with:
-          image-ref: ${{ matrix.image }}:${{ github.sha }}
-          format: table
-          exit-code: 1
-          severity: CRITICAL,HIGH
-          
-      - name: Build and push Docker image EPFL-ENAC.Agent.Service
-        id: build-docker-push
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.context }}
           push: true
-          file: ${{ matrix.dockerfile }}
           tags: ${{ steps.meta.outputs.tags }},${{ matrix.image }}:${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             SSH_PRIVATE_KEY=${{ secrets.private_key }}
+          cache-from: type=gha,scope=build-${{ matrix.name }}
 
-      - name: Collect Image Data
-        id: collect
+      - name: Save image data
         run: |
-          image_data=$(jq -nc '{
+          mkdir -p /tmp/image-data
+          jq -nc '{
             "name": "${{ matrix.image }}",
-            "digest": "${{ steps.build-docker-push.outputs.digest }}",
-            "ref_name": "${{ github.ref_name }}"
-          }')
-          echo "image_data_${{ matrix.id }}=$image_data" >> $GITHUB_OUTPUT
-          echo $image_data
+            "digest": "${{ steps.push.outputs.digest }}",
+            "ref_name": "${{ github.ref_name }}",
+            "registry": "${{ matrix.registry }}",
+            "push_id": "${{ matrix.push_id }}"
+          }' > /tmp/image-data/${{ matrix.push_id }}.json
+
+      - name: Upload image data artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-data-${{ matrix.push_id }}
+          path: /tmp/image-data/${{ matrix.push_id }}.json
+          retention-days: 1
 
   update-manifest:
     runs-on: ubuntu-latest
-    needs:
-      - build-and-push
+    needs: [define-matrix, push]
     permissions:
       contents: read
       packages: write
     strategy:
       fail-fast: false
       matrix:
-        argo_repository: ${{ fromJson(inputs.argo_repository) }}
+        include: ${{ fromJson(needs.define-matrix.outputs.manifest_matrix) }}
     steps:
-      # pretty much impossible to use multiple outputs in a matrix build
-      # https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/passing-information-between-jobs#using-job-outputs-in-a-matrix-job
-      # CF this issue on github: https://github.com/orgs/community/discussions/17245
+      - name: Download all image data
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/image-data
+          pattern: image-data-*
+          merge-multiple: true
 
-      - name: Process Images
+      - name: Process images for this registry
         id: aggregate
         run: |
-          images='${{ toJSON(needs.build-and-push.outputs) }}'
-          processed_images=$(echo "$images" | jq -r 'to_entries | map(.value | fromjson) | tostring')
-          echo "images=$processed_images" >> $GITHUB_OUTPUT
-          echo "images=$processed_images"
+          registry="${{ matrix.registry }}"
+          images=$(jq -sc "[.[] | select(.registry == \"$registry\")]" /tmp/image-data/*.json)
+          echo "images=$images" >> $GITHUB_OUTPUT
+          echo "Images for $registry: $images"
+
       - name: Set branch name
         id: set-branch
         run: |
-          if [[ "${{github.ref}}" == refs/tags/* ]]; then
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "branch=prod" >> $GITHUB_OUTPUT
             echo "branch=prod"
           fi
-          if [[ "${{github.ref}}" == refs/heads/dev ]]; then
+          if [[ "${{ github.ref }}" == refs/heads/dev ]]; then
             echo "branch=dev" >> $GITHUB_OUTPUT
             echo "branch=dev"
           fi
-          if [[ "${{github.ref}}" == refs/heads/develop ]]; then
+          if [[ "${{ github.ref }}" == refs/heads/develop ]]; then
             echo "branch=dev" >> $GITHUB_OUTPUT
             echo "branch=dev (src:develop => dst:dev)"
           fi
-          if [[ "${{github.ref}}" == refs/heads/test ]]; then
+          if [[ "${{ github.ref }}" == refs/heads/test ]]; then
             echo "branch=test" >> $GITHUB_OUTPUT
             echo "branch=test"
           fi
-          if [[ "${{github.ref}}" == refs/heads/stage ]]; then
+          if [[ "${{ github.ref }}" == refs/heads/stage ]]; then
             echo "branch=stage" >> $GITHUB_OUTPUT
             echo "branch=stage"
           fi
+
       - name: Deploy application
         if: steps.set-branch.outputs.branch != ''
         run: |
@@ -278,7 +390,7 @@ jobs:
           }
           EOF
           ) && \
-          echo "Deploying application to dev" && \
+          echo "Deploying to ${{ matrix.argo_repository }}" && \
           echo "Payload: $payload" && \
           curl -X POST \
           -H "Authorization: Bearer ${{ secrets.token }}" \
