@@ -184,13 +184,13 @@ jobs:
 
       - name: Scan image with Trivy
         if: inputs.skip_vulnerability_scan == false
-        uses: aquasecurity/trivy-action@0.20.0
+        uses: aquasecurity/trivy-action@latest
         with:
           image-ref: ${{ matrix.image }}:${{ github.sha }}
           format: table
           exit-code: 1
           severity: CRITICAL,HIGH
-          
+
       - name: Build and push Docker image EPFL-ENAC.Agent.Service
         id: build-docker-push
         uses: docker/build-push-action@v6
