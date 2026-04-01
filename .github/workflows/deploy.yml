@@ -184,7 +184,7 @@ jobs:
 
       - name: Scan image with Trivy
         if: inputs.skip_vulnerability_scan == false
-        uses: aquasecurity/trivy-action@latest
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: ${{ matrix.image }}:${{ github.sha }}
           format: table
