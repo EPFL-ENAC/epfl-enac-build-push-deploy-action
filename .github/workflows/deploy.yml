@@ -385,7 +385,11 @@ jobs:
               "images": ${{ steps.aggregate.outputs.images }},
               "create_pull_request": ${{ env.CREATE_PULL_REQUEST }},
               "helm_chart_name": "${{ inputs.helm_chart_name }}",
-              "helm_chart_version": "${{ inputs.helm_chart_version }}"
+              "helm_chart_version": "${{ inputs.helm_chart_version }}",
+              "triggered_by": "${{ github.actor }}",
+              "source_repo": "${{ github.repository }}",
+              "source_sha": "${{ github.sha }}",
+              "source_ref": "${{ github.ref_name }}"
             }
           }
           EOF
