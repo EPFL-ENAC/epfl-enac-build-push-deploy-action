@@ -132,6 +132,10 @@ The images pushed to the registry will be:
   - ghcr.io/epfl-enac/ethz-alice/arema/projects:{sha256}
   - ghcr.io/epfl-enac/ethz-alice/arema/router:{sha256}
 
+### ⚠️ Nested contexts
+
+Names come from the **leaf**: `./backend/lidar-api` → `lidar-api` (not `backend`). If your manifest repo expects a different name, the dispatcher silently skips that image — no error. Either flatten the context (move the Dockerfile up, use `./backend`) or match the leaf name in your manifest. `image_name` does not help — it only applies to `./` contexts.
+
 ## Multi-registry deployment
 
 To push the same images to multiple registries (e.g., ghcr.io AND a custom registry) and update different manifest repos for each:
@@ -183,6 +187,11 @@ Each entry in the `registries` JSON array supports:
 - `ghcr.io` registries use `GITHUB_TOKEN` automatically
 - The 1st non-ghcr registry uses the `registry_token` secret
 - The 2nd non-ghcr registry uses the `registry_token_2` secret
+
+## Upgrading v2.x → v3.x
+
+- **Image name derivation changed**: v2.x used the 2nd path segment of `build_context`, v3.x uses the last. Only nested contexts (`./backend/lidar-api`, etc.) are affected. Flatten the path or rename the image downstream — see [Nested contexts](#️-nested-contexts).
+- **Trivy scan runs by default**. Set `skip_vulnerability_scan: true` to bypass.
 
 ## For a repository that depends on a private repository
 
@@ -453,3 +462,11 @@ curl -X POST \
 - Add `CD_TOKEN`
 
 This value is provided by ENAC-IT while discussing the hosting agreement.
+
+## Troubleshooting
+
+**Build succeeds but manifest repo isn't updated.**
+- On v3.0.0–v3.0.4: dispatch silently returned 422 (payload exceeded GitHub's 10 top-level keys limit). Upgrade to v3.0.5+.
+- On v3.0.5+: if some images update and others don't, `images[].name` in the dispatch payload doesn't match the `name:` in your manifest. See [Nested contexts](#️-nested-contexts).
+
+**Trivy blocks the build on CVEs you can't fix.** Set `skip_vulnerability_scan: true`, or migrate the base image to a release line with active security patches.
