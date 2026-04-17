@@ -7,6 +7,38 @@ This action implements ENAC-IT's Continuous Deployment for your app on a given e
 - if you push on the *stage* branch, same but overlay *stage*
 - if you push a tag (create a release: v1.0.0 for instance, it will update the overlay prod
 
+## Architecture
+
+The workflow is split into 4 jobs:
+
+```
+define-matrix → build → push → update-manifest
+```
+
+1. **define-matrix**: computes build contexts, registry targets, and manifest repos
+2. **build**: builds Docker images once (no push), runs vulnerability scan, caches all layers via GitHub Actions cache (`type=gha, mode=max`)
+3. **push**: rebuilds instantly from cache and pushes to each registry (matrix over registries × build contexts)
+4. **update-manifest**: downloads image metadata artifacts, dispatches to each ArgoCD manifest repo
+
+This architecture ensures each image is built only **once**, regardless of how many registries or manifest repos are configured.
+
+### Docker Build Caching
+
+Docker layers are cached using GitHub Actions cache (`cache-to: type=gha,mode=max`). The `mode=max` setting caches **all** layers including intermediate build stages, which means package installations (npm, uv, pip, etc.) are cached as Docker layers. Subsequent builds reuse cached layers when the relevant files haven't changed.
+
+For even more granular caching inside Docker builds, use BuildKit cache mounts in your Dockerfile:
+
+```dockerfile
+# npm
+RUN --mount=type=cache,target=/root/.npm npm ci
+
+# uv
+RUN --mount=type=cache,target=/root/.cache/uv uv sync
+
+# pip
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+```
+
 To use it in your repository, create a workflow file named `.github/workflows/deploy.yml` with the following content:
 
 
@@ -32,13 +64,12 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v2.7.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
       org: epfl-luts # your org
       repo: app-test # your app name, usual convention is name of your repository
-      argo_repository: "['EPFL-ENAC/enack8s-app-config', 'EPFL-ENAC/openshift-app-config']" # optional, default is "['EPFL-ENAC/enack8s-app-config']"
 ```
 
 Optional: override the image name when the build context is the repository root ("./" or "."). This is useful for complex repos where the default name (repo) does not match the desired image name.
@@ -49,7 +80,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v2.4.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -86,7 +117,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v2.4.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -100,6 +131,58 @@ The images pushed to the registry will be:
   - ghcr.io/epfl-enac/ethz-alice/arema/organization:{sha256}
   - ghcr.io/epfl-enac/ethz-alice/arema/projects:{sha256}
   - ghcr.io/epfl-enac/ethz-alice/arema/router:{sha256}
+
+## Multi-registry deployment
+
+To push the same images to multiple registries (e.g., ghcr.io AND a custom registry) and update different manifest repos for each:
+
+```yml
+jobs:
+  deploy:
+    permissions:
+      contents: read
+      packages: write
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3
+    secrets:
+      token: ${{ secrets.CD_TOKEN }}
+      registry_token: ${{ secrets.CUSTOM_REGISTRY_TOKEN }}
+    with:
+      org: epfl-luts
+      repo: app-test
+      build_context: '["./backend", "./frontend"]'
+      registries: |
+        [
+          {
+            "registry": "ghcr.io",
+            "argo_repositories": ["EPFL-ENAC/enack8s-app-config"]
+          },
+          {
+            "registry": "registry.example.com",
+            "registry_path": "my-project",
+            "registry_username": "deploy-bot",
+            "argo_repositories": ["EPFL-ENAC/openshift-app-config"]
+          }
+        ]
+```
+
+This builds each image **once**, then pushes to both ghcr.io and registry.example.com, and updates separate ArgoCD manifest repos for each registry.
+
+### Registry entry format
+
+Each entry in the `registries` JSON array supports:
+
+| Field | Required | Description |
+|---|---|---|
+| `registry` | yes | Registry hostname (e.g., `ghcr.io`, `docker.io`) |
+| `registry_path` | no | Path prefix for image names (e.g., `my-project`) |
+| `registry_username` | no | Username for login (defaults to `github.actor`) |
+| `argo_repositories` | no | JSON array of ArgoCD manifest repos to update |
+
+### Registry credentials
+
+- `ghcr.io` registries use `GITHUB_TOKEN` automatically
+- The 1st non-ghcr registry uses the `registry_token` secret
+- The 2nd non-ghcr registry uses the `registry_token_2` secret
 
 ## For a repository that depends on a private repository
 
@@ -118,7 +201,7 @@ ssh-keygen -t ed25519 -C "github-actions@github.com"
 ```yml
 jobs:
   deploy:
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@ssh
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3
     secrets:
       token: ${{ secrets.CD_TOKEN }}
       private_key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -166,6 +249,10 @@ RUN rm -rf /root/.ssh/
     - Default is false
   - `token`:
     The secret associated with the deployment_id - (mandatory)
+  - `registries`:
+    - JSON array of registry configurations for multi-registry push - (optional)
+    - If empty, falls back to the single `registry`/`registry_path`/`registry_username` inputs
+    - See [Multi-registry deployment](#multi-registry-deployment) for format
   - `build_context`:
     - The context of the build - (optional)
     - Currently we support max 9 contexts/ or build image per repository
@@ -218,7 +305,17 @@ RUN rm -rf /root/.ssh/
     - Has no effect on subdirectory contexts (e.g., "./modules/auth")
   - `create_pull_request`:
     - Create a pull request in the enack8s-app-config repository - (optional)
-    - Default is false, if you create a tag, it will automatically push to main without creating a PR, and deploy within the prod overlay in 5mn or so. 
+    - Default is false, if you create a tag, it will automatically push to main without creating a PR, and deploy within the prod overlay in 5mn or so.
+  - `skip_vulnerability_scan`:
+    - Skip the Trivy vulnerability scan - (optional)
+    - Default is false
+
+## Secrets
+  - `token`: PAT for dispatching to argo manifest repos - (mandatory)
+  - `private_key`: SSH private key for building from private repos - (optional)
+  - `registry_token`: Token for 1st non-ghcr registry - (optional)
+  - `registry_token_2`: Token for 2nd non-ghcr registry - (optional)
+
 ## Create one secrets in your repository
 
 Under your repository settings in /settings/secrets/actions
