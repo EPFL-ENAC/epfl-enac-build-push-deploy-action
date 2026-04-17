@@ -388,15 +388,14 @@ jobs:
               "helm_chart_version": "${{ inputs.helm_chart_version }}",
               "triggered_by": "${{ github.actor }}",
               "source_repo": "${{ github.repository }}",
-              "source_sha": "${{ github.sha }}",
-              "source_ref": "${{ github.ref_name }}"
+              "source_sha": "${{ github.sha }}"
             }
           }
           EOF
           ) && \
           echo "Deploying to ${{ matrix.argo_repository }}" && \
           echo "Payload: $payload" && \
-          curl -X POST \
+          curl --fail -X POST \
           -H "Authorization: Bearer ${{ secrets.token }}" \
           https://api.github.com/repos/${{ matrix.argo_repository }}/dispatches \
           -d "$payload"
