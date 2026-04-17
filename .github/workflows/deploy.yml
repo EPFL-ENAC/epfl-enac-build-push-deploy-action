@@ -64,7 +64,7 @@ on:
       skip_vulnerability_scan:
         required: false
         type: boolean
-        default: false
+        default: true
     secrets:
       token:
         required: true
