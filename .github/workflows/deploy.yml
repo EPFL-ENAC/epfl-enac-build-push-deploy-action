@@ -8,7 +8,7 @@ on:
         required: false
         type: string
         default: '["EPFL-ENAC/enack8s-app-config"]'
-        description: 'JSON array of argo repos (legacy, used when registries is not set)'
+        description: "JSON array of argo repos (legacy, used when registries is not set)"
       org:
         required: true
         type: string
@@ -235,7 +235,7 @@ jobs:
 
       - name: Scan image with Trivy
         if: inputs.skip_vulnerability_scan == false
-        uses: aquasecurity/trivy-action@0.20.0
+        uses: aquasecurity/trivy-action@latest
         with:
           image-ref: local/${{ matrix.name }}:${{ github.sha }}
           format: table
