@@ -20,6 +20,12 @@ on:
         required: false
         type: boolean
         default: false
+      submodules:
+        # whether to checkout submodules
+        # `true` to checkout submodules or `recursive` to recursively checkout submodules
+        required: false
+        type: string
+        default: false
       build_context:
         required: false
         type: string
@@ -216,6 +222,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           lfs: ${{ inputs.lfs }}
+          submodules: ${{ inputs.submodules }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -257,6 +264,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           lfs: ${{ inputs.lfs }}
+          submodules: ${{ inputs.submodules }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
