@@ -89,6 +89,16 @@ jobs:
       image_name: custom-api # will produce ghcr.io/<owner-lowercased>/epfl-luts/custom-api for root context
 ```
 
+To add LFS and/or submodule support, add the corresponding inputs:
+
+```yml
+    with:
+      org: epfl-luts
+      repo: app-test
+      lfs: true
+      submodules: true
+```
+
 ## For repository with multi images
 
 Pass an additional input: `build_context` which is a list of directories with a Dockerfile in each.
