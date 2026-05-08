@@ -25,6 +25,40 @@ name: example_workflow
 # ============================================================================
 # Example 2: Multi-registry (push same image to ghcr.io AND a custom registry)
 # ============================================================================
+# jobs:
+#   deploy:
+#     permissions:
+#       contents: read
+#       packages: write
+#     uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3
+#     secrets:
+#       token: ${{ secrets.CD_TOKEN }}
+#       registry_token: ${{ secrets.CUSTOM_REGISTRY_TOKEN }}
+#     with:
+#       org: epfl-enac
+#       repo: my-app
+#       build_context: '["./backend", "./frontend"]'
+#       registries: |
+#         [
+#           {
+#             "registry": "ghcr.io",
+#             "argo_repositories": ["EPFL-ENAC/enack8s-app-config"]
+#           },
+#           {
+#             "registry": "registry.example.com",
+#             "registry_path": "my-project",
+#             "registry_username": "deploy-bot",
+#             "argo_repositories": ["EPFL-ENAC/openshift-app-config"]
+#           }
+#         ]
+
+# ============================================================================
+# Example 3: Bake GIT_SHA into the build (e.g. co2-calculator + GlitchTip)
+# ============================================================================
+# Forwards GIT_SHA to every Dockerfile in build_context. Frontends can read it
+# at build time (VITE_APP_VERSION / NEXT_PUBLIC_APP_VERSION / etc.) and pass it
+# to Sentry/GlitchTip as the release identifier. Dockerfiles that don't
+# declare ARG GIT_SHA simply ignore it (Docker prints a warning, build OK).
 jobs:
   deploy:
     permissions:
@@ -33,21 +67,9 @@ jobs:
     uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3
     secrets:
       token: ${{ secrets.CD_TOKEN }}
-      registry_token: ${{ secrets.CUSTOM_REGISTRY_TOKEN }}
     with:
-      org: epfl-enac
-      repo: my-app
-      build_context: '["./backend", "./frontend"]'
-      registries: |
-        [
-          {
-            "registry": "ghcr.io",
-            "argo_repositories": ["EPFL-ENAC/enack8s-app-config"]
-          },
-          {
-            "registry": "registry.example.com",
-            "registry_path": "my-project",
-            "registry_username": "deploy-bot",
-            "argo_repositories": ["EPFL-ENAC/openshift-app-config"]
-          }
-        ]
+      org: epfl
+      repo: co2-calculator
+      build_context: '[ "./frontend", "./backend", "./docs" ]'
+      build_args: |
+        GIT_SHA=${{ github.sha }}

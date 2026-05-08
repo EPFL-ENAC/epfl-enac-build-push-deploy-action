@@ -64,7 +64,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.0.5
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.0.7
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -80,7 +80,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.0.5
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.0.7
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -127,7 +127,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.0.5
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.0.7
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -152,7 +152,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.0.5
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.0.7
     secrets:
       token: ${{ secrets.CD_TOKEN }}
       registry_token: ${{ secrets.CUSTOM_REGISTRY_TOKEN }}
@@ -211,7 +211,7 @@ ssh-keygen -t ed25519 -C "github-actions@github.com"
 ```yml
 jobs:
   deploy:
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.0.5
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.0.7
     secrets:
       token: ${{ secrets.CD_TOKEN }}
       private_key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -249,6 +249,73 @@ RUN mkdir -p /root/.ssh && \
 RUN rm -rf /root/.ssh/
 ```
 
+## Passing custom Docker build args (`build_args`)
+
+Use the `build_args` input to pass extra `--build-arg KEY=VALUE` pairs into every image built by the matrix. Each line is one `KEY=VALUE`. The value is appended to the built-in `SSH_PRIVATE_KEY` arg, so both work together.
+
+A typical use case is baking the **git SHA** of the deploy into the image so frontends can report their release to error trackers (Sentry, GlitchTip), and backends can expose a `/version` endpoint.
+
+```yml
+jobs:
+  deploy:
+    permissions:
+      contents: read
+      packages: write
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.0.7
+    secrets:
+      token: ${{ secrets.CD_TOKEN }}
+    with:
+      org: epfl
+      repo: co2-calculator
+      build_context: '[ "./frontend", "./backend", "./docs" ]'
+      build_args: |
+        GIT_SHA=${{ github.sha }}
+```
+
+The same `GIT_SHA` is forwarded to **every** Dockerfile in `build_context`. Dockerfiles that don't declare a matching `ARG` simply ignore it — Docker emits a harmless warning and the build proceeds.
+
+### Example: GlitchTip / Sentry release tagging (co2-calculator)
+
+In the **frontend** Dockerfile, accept the arg and expose it as a build-time env var so Vite/webpack inlines it into the bundle:
+
+```dockerfile
+# frontend/Dockerfile
+FROM node:22-alpine AS build
+ARG GIT_SHA=dev
+ENV VITE_APP_VERSION=$GIT_SHA
+WORKDIR /app
+COPY package*.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY . .
+RUN npm run build
+# ...
+```
+
+In the frontend code, initialise the Sentry/GlitchTip SDK with the SHA as the release identifier:
+
+```ts
+// frontend/src/sentry.ts
+import * as Sentry from '@sentry/vue'
+
+Sentry.init({
+  dsn: import.meta.env.VITE_GLITCHTIP_DSN,
+  release: import.meta.env.VITE_APP_VERSION, // full git SHA, baked at build time
+  environment: import.meta.env.MODE,
+})
+```
+
+Now every error event in GlitchTip is tagged with the exact deploy SHA — clicking through from an event to source takes you to the commit that produced the broken bundle.
+
+The **backend** and **docs** Dockerfiles in the same matrix don't need to consume `GIT_SHA`: passing an unused build-arg is a no-op (Docker prints `WARN: ... was not consumed`). If you do want them to expose a version endpoint, just add `ARG GIT_SHA` and use it.
+
+> Source-map upload to GlitchTip is a separate, project-local job (it requires the un-minified source maps which are not part of the runtime image). Keep using the same `${{ github.sha }}` as the release tag in that job and the events will line up.
+
+### Other use cases
+
+- `APP_VERSION=${{ github.ref_name }}` — bake a tag like `v1.2.3` into a backend response header.
+- `BUILD_DATE=${{ github.event.repository.updated_at }}` — for OCI labels.
+- `NPM_TOKEN=${{ secrets.NPM_TOKEN }}` — for private npm packages (prefer secrets/SSH keys for credentials, but the mechanism works).
+
 ## Inputs
   - `org`:
     The organization name given by ENAC-IT - (mandatory)
@@ -260,6 +327,12 @@ RUN rm -rf /root/.ssh/
   - `submodules`:
     - Enable Git submodules checkout - (optional)
     - Default is false. Can be set to true or 'recursive'
+  - `build_args`:
+    - Additional Docker build-args, one `KEY=VALUE` per line - (optional)
+    - Default is empty
+    - Appended to the built-in `SSH_PRIVATE_KEY` arg
+    - Forwarded to every image in the build matrix; unconsumed args produce a harmless Docker warning
+    - See [Passing custom Docker build args](#passing-custom-docker-build-args-build_args)
   - `token`:
     The secret associated with the deployment_id - (mandatory)
   - `registries`:

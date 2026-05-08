@@ -26,6 +26,15 @@ on:
         required: false
         type: string
         default: false
+      build_args:
+        required: false
+        type: string
+        default: ""
+        description: |
+          Additional Docker build-args, one KEY=VALUE per line. Appended to the
+          built-in SSH_PRIVATE_KEY arg. Useful for passing GIT_SHA, version
+          tags, etc. into the build. Unconsumed args are harmless (Docker just
+          warns).
       build_context:
         required: false
         type: string
@@ -237,6 +246,7 @@ jobs:
           tags: local/${{ matrix.name }}:${{ github.sha }}
           build-args: |
             SSH_PRIVATE_KEY=${{ secrets.private_key }}
+            ${{ inputs.build_args }}
           cache-from: type=gha,scope=build-${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=build-${{ matrix.name }}
 
@@ -311,6 +321,7 @@ jobs:
           cache-from: type=gha,scope=build-${{ matrix.name }}
           build-args: |
             SSH_PRIVATE_KEY=${{ secrets.private_key }}
+            ${{ inputs.build_args }}
 
       - name: Save image data
         run: |
