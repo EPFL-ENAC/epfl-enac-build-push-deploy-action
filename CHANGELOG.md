@@ -5,6 +5,11 @@ All notable changes to EPFL ENAC-IT Continuous Deployment Action will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.7] - 2026-05-08
+
+### Added
+- **Custom Docker build args** - New `build_args` input to forward extra `KEY=VALUE` pairs (one per line) to every image in the build matrix. Appended to the built-in `SSH_PRIVATE_KEY` arg; unconsumed args produce a harmless Docker warning. Typical use case: baking `GIT_SHA=${{ github.sha }}` into frontend bundles for Sentry/GlitchTip release tagging. See README for a co2-calculator example.
+
 ## [3.0.6] - 2026-05-05
 
 ### Added
@@ -150,13 +155,15 @@ Major evolution from v2.0.0 to v3.0.0 with significant new features including mu
 
 ## Migration Guide
 
-Users on v2.x can upgrade to v3.0.5 by updating the action reference:
+Users on v2.x can upgrade to v3.0.7 by updating the action reference:
 ```yaml
-uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.0.5
+uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.0.7
 ```
 
 No breaking changes - migration from v2.x to v3.0.0 is backward compatible.
 
+[3.0.7]: https://github.com/EPFL-ENAC/epfl-enac-build-push-deploy-action/compare/v3.0.6...v3.0.7
+[3.0.6]: https://github.com/EPFL-ENAC/epfl-enac-build-push-deploy-action/compare/v3.0.5...v3.0.6
 [3.0.5]: https://github.com/EPFL-ENAC/epfl-enac-build-push-deploy-action/compare/v3.0.4...v3.0.5
 [3.0.4]: https://github.com/EPFL-ENAC/epfl-enac-build-push-deploy-action/compare/v3.0.3...v3.0.4
 [3.0.3]: https://github.com/EPFL-ENAC/epfl-enac-build-push-deploy-action/compare/v3.0.2...v3.0.3
