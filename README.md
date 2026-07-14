@@ -16,11 +16,11 @@ define-matrix → build → push → update-manifest
 ```
 
 1. **define-matrix**: computes build contexts, registry targets, and manifest repos
-2. **build**: builds Docker images once (no push), runs vulnerability scan, caches all layers via GitHub Actions cache (`type=gha, mode=max`)
-3. **push**: rebuilds instantly from cache and pushes to each registry (matrix over registries × build contexts)
+2. **build**: builds Docker images once and pushes them to ghcr.io (`:sha` tag), runs vulnerability scan, caches all layers via GitHub Actions cache (`type=gha, mode=max`)
+3. **push**: copies the ghcr image to each registry with [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md) and applies the release/branch tags (matrix over registries × build contexts). No rebuild: every registry receives a byte-identical copy with the **same digest**
 4. **update-manifest**: downloads image metadata artifacts, dispatches to each ArgoCD manifest repo
 
-This architecture ensures each image is built only **once**, regardless of how many registries or manifest repos are configured.
+This architecture ensures each image is built only **once**: ghcr.io is always the source of truth, and any additional registry gets an exact copy of the scanned image.
 
 ### Docker Build Caching
 
@@ -315,6 +315,34 @@ The **backend** and **docs** Dockerfiles in the same matrix don't need to consum
 - `APP_VERSION=${{ github.ref_name }}` — bake a tag like `v1.2.3` into a backend response header.
 - `BUILD_DATE=${{ github.event.repository.updated_at }}` — for OCI labels.
 - `NPM_TOKEN=${{ secrets.NPM_TOKEN }}` — for private npm packages (prefer secrets/SSH keys for credentials, but the mechanism works).
+
+## Scheduled registry vulnerability scan
+
+The deploy-time Trivy scan only checks an image when it is built. To catch CVEs published **after** a release ships, this repo also provides a reusable scheduled scan: `registry-scan.yml`. For each image it scans the newest release tag (`v*`) plus the mutable `dev`/`stage` tags, and files one GitHub issue in your repo per vulnerable tag+digest (deduplicated by title, so re-runs don't spam).
+
+Create `.github/workflows/registry-scan.yml` in your repository:
+
+```yaml
+name: registry-scan
+on:
+  schedule:
+    - cron: "0 3 * * 0" # Every Sunday at 3:00 AM
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+  issues: write
+
+jobs:
+  scan:
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/registry-scan.yml@v3.1.0
+    with:
+      # ghcr image paths without the ghcr.io/ prefix
+      images: '["epfl-enac/epfl/my-app/frontend","epfl-enac/epfl/my-app/backend"]'
+```
+
+Trivy and crane are installed version-pinned with hardcoded checksums (no live apt repo or third-party action at run time).
 
 ## Inputs
   - `org`:

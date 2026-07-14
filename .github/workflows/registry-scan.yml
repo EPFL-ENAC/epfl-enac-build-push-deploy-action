@@ -1,0 +1,157 @@
+---
+name: registry-scan
+
+# Reusable scheduled vulnerability scan for images already pushed to ghcr.
+# Call it from a thin cron wrapper in your repo:
+#
+#   name: registry-scan
+#   on:
+#     schedule:
+#       - cron: "0 3 * * 0"
+#     workflow_dispatch:
+#   permissions:
+#     packages: read
+#     issues: write
+#   jobs:
+#     scan:
+#       uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/registry-scan.yml@main
+#       with:
+#         images: '["epfl-enac/epfl/co2-calculator/frontend","epfl-enac/epfl/co2-calculator/backend"]'
+
+on:
+  workflow_call:
+    inputs:
+      images:
+        required: true
+        type: string
+        description: |
+          JSON array of ghcr image paths, without the ghcr.io/ prefix,
+          e.g. '["epfl-enac/epfl/co2-calculator/frontend"]'.
+          For each image, the newest release tag (v*) plus the mutable
+          dev/stage tags are scanned. One GitHub issue is filed in the
+          calling repo per vulnerable tag+digest (deduplicated by title,
+          so a new issue only appears when the digest changes or new
+          CVEs land on a digest whose issue was closed).
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  scan-images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      issues: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJson(inputs.images) }}
+
+    env:
+      IMG: ghcr.io/${{ matrix.image }}
+
+    steps:
+      - name: Install tools (pinned)
+        run: |
+          # Version-pinned with hardcoded checksums: installing from a live
+          # apt repo or action would run whatever it serves that day as root.
+          TRIVY_VERSION=0.72.0
+          TRIVY_SHA256=9bf8aba92f524b74f8e83d53b298a7dfc6b4d60aca779217e7817e5433c73eeb
+          wget -q "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb"
+          echo "${TRIVY_SHA256}  trivy_${TRIVY_VERSION}_Linux-64bit.deb" | sha256sum -c
+          sudo dpkg -i "trivy_${TRIVY_VERSION}_Linux-64bit.deb"
+
+          CRANE_VERSION=v0.21.7
+          CRANE_SHA256=1a57bc98207fa1c0d04bf760699099e26f8383499bfd55b99c1b919a928a7230
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" -o crane.tar.gz
+          echo "${CRANE_SHA256}  crane.tar.gz" | sha256sum -c
+          tar xzf crane.tar.gz crane
+          sudo mv crane /usr/local/bin/
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Get tags from GHCR
+        run: |
+          # Scan only images that can actually run: the newest release tag
+          # (prod) plus the mutable dev/stage tags. Older releases are
+          # immutable and inevitably rot, which would file an unactionable
+          # issue per historical tag. ("latest" mirrors the newest release.)
+          {
+            crane ls "$IMG" | grep '^v' | sort -V | tail -n1
+            crane ls "$IMG" | grep -Ex 'dev|stage' || true
+          } > tags.txt
+
+      - name: List tags without issues
+        run: |
+          while read tag; do
+
+            digest=$(crane digest "$IMG:$tag")
+
+            if gh issue list \
+                --repo ${{ github.repository }} \
+                --search "in:title '🚨 Vulnerabilities in ghcr image ${{ matrix.image }}:$tag $digest'" | grep -q "$tag"; then
+              echo "Issue already exists for ${{ matrix.image }}:$tag  $digest, skipping"
+            else
+              echo "$tag@$digest" >> tags-to-scan.txt
+            fi
+          done < tags.txt
+
+      - name: Scan images
+        run: |
+          mkdir -p reports
+
+          if [ ! -f tags-to-scan.txt ]; then
+            echo "No tags to scan"
+            exit 0
+          fi
+
+          echo "Tags to scan:"
+          cat tags-to-scan.txt
+
+          while read tagdigest; do
+            digest=$(echo $tagdigest | cut -d'@' -f2)
+            if ! trivy image \
+              --severity HIGH,CRITICAL \
+              --exit-code 1 \
+              --format json \
+              --output report.json \
+              "$IMG@$digest"
+            then
+              echo "$tagdigest" >> vulnerable-tags.txt
+            fi
+            # One line per finding instead of Trivy's ASCII table, so the
+            # report fits comfortably in a GitHub issue body.
+            jq -r '.Results[]? | .Vulnerabilities[]?
+                   | "\(.Severity)\t\(.PkgName)\t\(.VulnerabilityID)\t\(.InstalledVersion) -> \(.FixedVersion // "no fix")"' \
+              report.json | sort -u > reports/$tagdigest.txt
+          done < tags-to-scan.txt
+
+      - name: Create issues
+        if: always()
+        run: |
+          if [ ! -f vulnerable-tags.txt ]; then
+            echo "No vulnerabilities"
+            exit 0
+          fi
+
+          while read tagdigest; do
+            tag=$(echo $tagdigest | cut -d'@' -f1)
+            digest=$(echo $tagdigest | cut -d'@' -f2)
+            echo "🚨 Vulnerabilities in ghcr image ${{ matrix.image }}:$tag $digest" > issue.txt
+            echo "\`\`\`txt" >> issue.txt
+            # GitHub caps issue bodies at 65536 chars; leave headroom for the fence/footer
+            head -c 60000 reports/$tagdigest.txt >> issue.txt
+            echo "\`\`\`" >> issue.txt
+            if [ "$(wc -c < reports/$tagdigest.txt)" -gt 60000 ]; then
+              echo "_Report truncated — full output in the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})._" >> issue.txt
+            fi
+
+            gh issue create \
+              --repo ${{ github.repository }} \
+              --title "🚨 Vulnerabilities in ghcr image ${{ matrix.image }}:$tag $digest" \
+              --body-file issue.txt
+
+          done < vulnerable-tags.txt

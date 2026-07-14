@@ -5,6 +5,15 @@ All notable changes to EPFL ENAC-IT Continuous Deployment Action will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-07-14
+
+### Changed
+- **Same digest on every registry** - The `build` job now pushes the image once to ghcr.io (`:sha` tag); the `push` job copies it byte-for-byte to each configured registry with [crane](https://github.com/google/go-containerregistry) instead of rebuilding from the GHA layer cache. All registries receive the identical digest, and what Trivy scanned is exactly what gets deployed. Note: ghcr.io now always receives the `:sha` image, even for custom-registry-only configurations.
+- **Pinned security tooling** - Trivy (0.72.0) and crane (v0.21.7) are installed as version-pinned binaries with hardcoded SHA256 checksums, replacing the `aquasecurity/trivy-action` and third-party setup actions.
+
+### Added
+- **Reusable scheduled registry scan** - New `registry-scan.yml` reusable workflow: weekly Trivy scan of already-published ghcr images (newest `v*` tag + `dev`/`stage`), filing one deduplicated GitHub issue per vulnerable tag+digest in the calling repo. See README.
+
 ## [3.0.7] - 2026-05-08
 
 ### Added
