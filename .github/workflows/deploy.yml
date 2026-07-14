@@ -253,9 +253,15 @@ jobs:
       - name: Build and push Docker image to GHCR
         id: build
         uses: docker/build-push-action@v6
+        env:
+          # skip v6's default build-record artifact upload; summary alone is enough
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          # no provenance attestation: nothing downstream consumes it and it
+          # adds an unknown/unknown manifest to the pushed index
+          provenance: false
           push: true
           tags: ${{ matrix.ghcr_image }}:${{ github.sha }}
           build-args: |
