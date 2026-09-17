@@ -384,6 +384,10 @@ Trivy and crane are installed version-pinned with hardcoded checksums (no live a
     - JSON array of registry configurations for multi-registry push - (optional)
     - If empty, falls back to the single `registry`/`registry_path`/`registry_username` inputs
     - See [Multi-registry deployment](#multi-registry-deployment) for format
+  - `build_args_script`:
+    - Shell script run in each build job after checkout, from the repository root - (optional)
+    - Every stdout line is a `KEY=VALUE` build arg appended to `build_args`; write diagnostics to stderr
+    - For values that need the checkout, such as a version read from `package.json` or the commit date. Runs once per image in parallel, so derive from the commit rather than the clock if the images must agree
   - `build_context`:
     - The context of the build - (optional)
     - Currently we support max 9 contexts/ or build image per repository
