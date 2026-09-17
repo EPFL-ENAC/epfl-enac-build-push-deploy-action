@@ -316,6 +316,23 @@ The **backend** and **docs** Dockerfiles in the same matrix don't need to consum
 - `BUILD_DATE=${{ github.event.repository.updated_at }}` — for OCI labels.
 - `NPM_TOKEN=${{ secrets.NPM_TOKEN }}` — for private npm packages (prefer secrets/SSH keys for credentials, but the mechanism works).
 
+## Publishing a Helm chart
+
+Set `helm_chart_path` and the workflow packages and pushes the chart itself, in a job that runs in parallel with the image builds instead of gating them:
+
+```yaml
+    with:
+      build_context: '[ "./frontend", "./backend" ]'
+      helm_chart_name: my-app
+      helm_chart_path: ./helm
+      # optional: values needed for the chart to render at all
+      helm_chart_render_args: |
+        --set backend.existingSecret.name=ci-existing-secret
+        --set backend.existingSecret.enabled=false --set backend.secrets.JWT_HMAC_KEY=x
+```
+
+Each line of `helm_chart_render_args` is one render; all must succeed before the chart is pushed. The version (`1.0.<run_number>` with a `-dev`/`-rc` suffix by branch) is forwarded to the manifest repos as `helm_chart_version`.
+
 ## Scheduled registry vulnerability scan
 
 The deploy-time Trivy scan only checks an image when it is built. To catch CVEs published **after** a release ships, this repo also provides a reusable scheduled scan: `registry-scan.yml`. For each image it scans the newest release tag (`v*`) plus the mutable `dev`/`stage` tags, and files one GitHub issue in your repo per vulnerable tag+digest (deduplicated by title, so re-runs don't spam).
@@ -423,6 +440,17 @@ Trivy and crane are installed version-pinned with hardcoded checksums (no live a
   - `skip_vulnerability_scan`:
     - Skip the Trivy vulnerability scan - (optional)
     - Default is false
+  - `helm_chart_path`:
+    - Directory of a Helm chart to package and push - (optional)
+    - Pushed to `oci://ghcr.io/<repository-lowercased>/helm` as `1.0.<run_number>` (tag), `1.0.<run_number>-rc` (stage) or `1.0.<run_number>-dev` (any other branch)
+    - The job runs alongside the image builds; only `update-manifest` waits for it, and receives the version as `helm_chart_version`
+    - See [Publishing a Helm chart](#publishing-a-helm-chart)
+  - `helm_chart_render_args`:
+    - Smoke-test renders before packaging: one `helm template` per non-empty line, each line appended as extra arguments - (optional)
+    - Empty runs a single plain `helm template`
+  - `helm_chart_name` / `helm_chart_version`:
+    - Chart coordinates written into the manifest payload - (optional)
+    - `helm_chart_version` is ignored when `helm_chart_path` is set
 
 ## Secrets
   - `token`: PAT for dispatching to argo manifest repos - (mandatory)

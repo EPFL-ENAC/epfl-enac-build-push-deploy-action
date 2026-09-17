@@ -76,6 +76,23 @@ on:
         required: false
         type: string
         default: ""
+        description: "Chart version to write into the manifest. Ignored when helm_chart_path is set (the publish-chart job computes it)."
+      helm_chart_path:
+        required: false
+        type: string
+        default: ""
+        description: |
+          Directory of a Helm chart to package and push to
+          oci://ghcr.io/<repository-lowercased>/helm as 1.0.<run_number>[-dev|-rc].
+          Runs alongside the image builds; only update-manifest waits for it.
+      helm_chart_render_args:
+        required: false
+        type: string
+        default: ""
+        description: |
+          Smoke-test renders before packaging: one `helm template` per
+          non-empty line, each line appended as extra arguments. Empty runs a
+          single plain render.
       skip_vulnerability_scan:
         required: false
         type: boolean
@@ -381,9 +398,62 @@ jobs:
           path: /tmp/image-data/${{ matrix.push_id }}.json
           retention-days: 1
 
+  publish-chart:
+    if: inputs.helm_chart_path != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.helm_chart_path }}
+    outputs:
+      chart_version: ${{ steps.version.outputs.chart_version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Login to GHCR
+        # helm's own login: no Node action boot, no post-job logout step
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Render chart
+        # A failing render is the signal; the manifest itself goes to
+        # /dev/null (thousands of log lines otherwise).
+        env:
+          RENDER_ARGS: ${{ inputs.helm_chart_render_args }}
+        run: |
+          if [ -z "$RENDER_ARGS" ]; then
+            helm template . > /dev/null
+            exit 0
+          fi
+          while IFS= read -r line; do
+            [ -z "$line" ] || helm template . $line > /dev/null
+          done <<< "$RENDER_ARGS"
+
+      - name: Chart version
+        id: version
+        # Same ref rules as set-branch below: tag → release, stage → rc,
+        # every other branch → dev.
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/*)      v="1.0.${GITHUB_RUN_NUMBER}" ;;
+            refs/heads/stage) v="1.0.${GITHUB_RUN_NUMBER}-rc" ;;
+            *)                v="1.0.${GITHUB_RUN_NUMBER}-dev" ;;
+          esac
+          echo "chart_version=$v" >> "$GITHUB_OUTPUT"
+          echo "$v"
+
+      - name: Package and push chart
+        run: |
+          tgz=$(helm package --version "${{ steps.version.outputs.chart_version }}" . | sed 's/.*saved it to: //')
+          helm push "$tgz" "oci://ghcr.io/${GITHUB_REPOSITORY,,}/helm"
+
   update-manifest:
     runs-on: ubuntu-latest
-    needs: [define-matrix, push]
+    needs: [define-matrix, push, publish-chart]
+    # publish-chart is skipped when no chart path is given; a skipped need
+    # would otherwise skip this job too
+    if: ${{ !cancelled() && needs.define-matrix.result == 'success' && needs.push.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.publish-chart.result) }}
     permissions:
       contents: read
       packages: write
@@ -444,7 +514,7 @@ jobs:
               "images": ${{ steps.aggregate.outputs.images }},
               "create_pull_request": ${{ env.CREATE_PULL_REQUEST }},
               "helm_chart_name": "${{ inputs.helm_chart_name }}",
-              "helm_chart_version": "${{ inputs.helm_chart_version }}",
+              "helm_chart_version": "${{ needs.publish-chart.outputs.chart_version || inputs.helm_chart_version }}",
               "triggered_by": "${{ github.actor }}",
               "source_repo": "${{ github.repository }}",
               "source_sha": "${{ github.sha }}"
