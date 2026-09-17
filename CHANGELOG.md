@@ -5,6 +5,16 @@ All notable changes to EPFL ENAC-IT Continuous Deployment Action will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-09-17
+
+### Changed
+
+- Build layer cache moved from the GitHub Actions cache to a `:buildcache` tag on ghcr (`type=registry,mode=max`): faster export, no 10GB per-repo eviction.
+- Buildx builder is no longer removed in post-cleanup (`cleanup: false`), ~8s per build job.
+- Trivy installed from the release tarball instead of the `.deb`, ~3s per build job.
+- Provenance attestation and build-record upload disabled: nothing consumed them.
+- Actions bumped to Node 24 majors: checkout v7, setup-buildx v4, login v4, build-push v7, metadata v6, upload-artifact v7, download-artifact v8.
+
 ## [3.1.0] - 2026-07-14
 
 ### Changed
