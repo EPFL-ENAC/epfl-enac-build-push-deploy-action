@@ -5,6 +5,13 @@ All notable changes to EPFL ENAC-IT Continuous Deployment Action will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - 2026-09-17
+
+### Changed
+
+- The copy to the other registries and the tagging now run at the end of each build job, after the vulnerability scan, instead of in a separate `push` job per (image × registry). Same crane copy, same digest everywhere; what goes away is one runner boot, three logins and a crane download per copy, 13 to 17s of wall time per run.
+- Build jobs are named `build <image>`.
+
 ## [3.3.0] - 2026-09-17
 
 ### Added

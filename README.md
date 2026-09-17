@@ -17,7 +17,7 @@ define-matrix → build → push → update-manifest
 
 1. **define-matrix**: computes build contexts, registry targets, and manifest repos
 2. **build**: builds Docker images once and pushes them to ghcr.io (`:sha` tag), runs vulnerability scan, caches all layers on ghcr under a `:buildcache` tag (`type=registry, mode=max`)
-3. **push**: copies the ghcr image to each registry with [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md) and applies the release/branch tags (matrix over registries × build contexts). No rebuild: every registry receives a byte-identical copy with the **same digest**
+3. **build** (same job, after the scan): copies the ghcr image to each other registry with [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md) and applies the release/branch tags. No rebuild: every registry receives a byte-identical copy with the **same digest**
 4. **update-manifest**: downloads image metadata artifacts, dispatches to each ArgoCD manifest repo
 
 This architecture ensures each image is built only **once**: ghcr.io is always the source of truth, and any additional registry gets an exact copy of the scanned image.
