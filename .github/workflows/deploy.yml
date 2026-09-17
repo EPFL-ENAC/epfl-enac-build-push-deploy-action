@@ -122,7 +122,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build_matrix: ${{ steps.set-matrix.outputs.build_matrix }}
-      push_matrix: ${{ steps.set-matrix.outputs.push_matrix }}
       manifest_matrix: ${{ steps.set-matrix.outputs.manifest_matrix }}
     steps:
       - name: lowercase repo owner
@@ -178,10 +177,7 @@ jobs:
                   end)
               }
           )')
-          echo "build_matrix=$build_matrix" >> "$GITHUB_OUTPUT"
-          echo "Build matrix: $build_matrix"
-
-          # --- Push matrix (cross-product: build contexts × registries) ---
+          # --- Push targets (cross-product: build contexts × registries) ---
           push_matrix=$(echo "$registries_json" | jq -c \
             --argjson builds "$build_matrix" \
             --arg owner "$owner" \
@@ -218,8 +214,13 @@ jobs:
                 push_id: ("r" + ($ri + 1 | tostring) + "_c" + (.id | tostring))
               }
             ]')
-          echo "push_matrix=$push_matrix" >> "$GITHUB_OUTPUT"
-          echo "Push matrix: $push_matrix"
+          # Each build job copies its own image to every registry, so the
+          # targets ride along inside the build matrix entry instead of
+          # fanning out into a second job per (image × registry).
+          build_matrix=$(jq -nc --argjson b "$build_matrix" --argjson p "$push_matrix" \
+            '$b | map(.id as $id | . + {targets: [$p[] | select(.build_id == $id)]})')
+          echo "build_matrix=$build_matrix" >> "$GITHUB_OUTPUT"
+          echo "Build matrix: $build_matrix"
 
           # --- Manifest matrix (argo repos with their associated registry) ---
           manifest_matrix=$(echo "$registries_json" | jq -c '[
@@ -237,10 +238,10 @@ jobs:
         shell: bash
         run: |
           echo "Build: ${{ steps.set-matrix.outputs.build_matrix }}"
-          echo "Push: ${{ steps.set-matrix.outputs.push_matrix }}"
           echo "Manifest: ${{ steps.set-matrix.outputs.manifest_matrix }}"
 
   build:
+    name: build ${{ matrix.name }}
     runs-on: ubuntu-latest
     needs: define-matrix
     strategy:
@@ -316,47 +317,9 @@ jobs:
             --exit-code 1 \
             "${{ matrix.ghcr_image }}:${{ github.sha }}"
 
-  push:
-    runs-on: ubuntu-latest
-    needs: [define-matrix, build]
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJson(needs.define-matrix.outputs.push_matrix) }}
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Login to GHCR
-        # always: ghcr is the copy source for every registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Login to custom registry (1st)
-        if: matrix.registry != 'ghcr.io' && matrix.non_ghcr_index == 1
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ matrix.registry }}
-          username: ${{ matrix.registry_username || github.actor }}
-          password: ${{ secrets.registry_token }}
-
-      - name: Login to custom registry (2nd)
-        if: matrix.registry != 'ghcr.io' && matrix.non_ghcr_index == 2
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ matrix.registry }}
-          username: ${{ matrix.registry_username || github.actor }}
-          password: ${{ secrets.registry_token_2 }}
-
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ matrix.image }}
-
+      # ---- Distribute: the same digest to every registry, in this job. A
+      # separate push job per (image × registry) cost 6 to 13s of runner
+      # boot, logins and downloads around a 1 to 7s crane copy.
       - name: Install crane (pinned)
         run: |
           CRANE_VERSION=v0.21.7
@@ -366,36 +329,56 @@ jobs:
           tar xzf crane.tar.gz crane
           sudo mv crane /usr/local/bin/
 
-      - name: Copy image from GHCR (same digest) and apply tags
-        id: push
+      - name: Login to the other registries
+        env:
+          TARGETS: ${{ toJson(matrix.targets) }}
+          REGISTRY_TOKEN: ${{ secrets.registry_token }}
+          REGISTRY_TOKEN_2: ${{ secrets.registry_token_2 }}
+          ACTOR: ${{ github.actor }}
         run: |
-          src="${{ matrix.source_image }}:${{ github.sha }}"
-          dst="${{ matrix.image }}:${{ github.sha }}"
-          if [ "$src" != "$dst" ]; then
-            crane copy "$src" "$dst"
-          fi
-          while IFS= read -r ref; do
-            [ -z "$ref" ] && continue
-            crane tag "$dst" "${ref##*:}"
-          done <<< "${{ steps.meta.outputs.tags }}"
-          echo "digest=$(crane digest "$dst")" >> "$GITHUB_OUTPUT"
+          # crane reads ~/.docker/config.json, so the ghcr login above already
+          # covers the copy source. First non-ghcr registry uses registry_token,
+          # second uses registry_token_2, same rule as the inputs document.
+          jq -c '.[] | select(.registry != "ghcr.io")' <<< "$TARGETS" | while read -r t; do
+            registry=$(jq -r .registry <<< "$t")
+            user=$(jq -r '.registry_username // ""' <<< "$t"); [ -n "$user" ] || user="$ACTOR"
+            token="$REGISTRY_TOKEN"; [ "$(jq -r .non_ghcr_index <<< "$t")" = 2 ] && token="$REGISTRY_TOKEN_2"
+            echo "$token" | crane auth login "$registry" -u "$user" --password-stdin
+          done
 
-      - name: Save image data
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ join(matrix.targets.*.image, ',') }}
+
+      - name: Copy image to every registry (same digest) and apply tags
+        env:
+          TARGETS: ${{ toJson(matrix.targets) }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          SRC: ${{ matrix.ghcr_image }}:${{ github.sha }}
+          SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           mkdir -p /tmp/image-data
-          jq -nc '{
-            "name": "${{ matrix.image }}",
-            "digest": "${{ steps.push.outputs.digest }}",
-            "ref_name": "${{ github.ref_name }}",
-            "registry": "${{ matrix.registry }}",
-            "push_id": "${{ matrix.push_id }}"
-          }' > /tmp/image-data/${{ matrix.push_id }}.json
+          jq -c '.[]' <<< "$TARGETS" | while read -r t; do
+            image=$(jq -r .image <<< "$t"); dst="$image:$SHA"
+            [ "$SRC" = "$dst" ] || crane copy "$SRC" "$dst"
+            jq -nc --arg name "$image" --arg digest "$(crane digest "$dst")" --arg ref_name "$REF_NAME" \
+              --arg registry "$(jq -r .registry <<< "$t")" --arg push_id "$(jq -r .push_id <<< "$t")" \
+              '{name: $name, digest: $digest, ref_name: $ref_name, registry: $registry, push_id: $push_id}' \
+              > "/tmp/image-data/$(jq -r .push_id <<< "$t").json"
+          done
+          while IFS= read -r ref; do
+            [ -z "$ref" ] && continue
+            crane tag "${ref%:*}:$SHA" "${ref##*:}"
+          done <<< "$TAGS"
 
       - name: Upload image data artifact
         uses: actions/upload-artifact@v7
         with:
-          name: image-data-${{ matrix.push_id }}
-          path: /tmp/image-data/${{ matrix.push_id }}.json
+          name: image-data-c${{ matrix.id }}
+          path: /tmp/image-data/*.json
           retention-days: 1
 
   publish-chart:
@@ -450,10 +433,10 @@ jobs:
 
   update-manifest:
     runs-on: ubuntu-latest
-    needs: [define-matrix, push, publish-chart]
+    needs: [define-matrix, build, publish-chart]
     # publish-chart is skipped when no chart path is given; a skipped need
     # would otherwise skip this job too
-    if: ${{ !cancelled() && needs.define-matrix.result == 'success' && needs.push.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.publish-chart.result) }}
+    if: ${{ !cancelled() && needs.define-matrix.result == 'success' && needs.build.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.publish-chart.result) }}
     permissions:
       contents: read
       packages: write
