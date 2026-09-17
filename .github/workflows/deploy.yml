@@ -35,6 +35,16 @@ on:
           built-in SSH_PRIVATE_KEY arg. Useful for passing GIT_SHA, version
           tags, etc. into the build. Unconsumed args are harmless (Docker just
           warns).
+      build_args_script:
+        required: false
+        type: string
+        default: ""
+        description: |
+          Shell script run in each build job after checkout, from the
+          repository root. Every stdout line is a KEY=VALUE build arg appended
+          to build_args; write diagnostics to stderr. Replaces a separate
+          caller job for values that need the checkout (a version file, a
+          commit date), which costs ~10s of job boundaries per run.
       build_context:
         required: false
         type: string
@@ -272,6 +282,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve build args
+        id: build-args
+        if: inputs.build_args_script != ''
+        env:
+          SCRIPT: ${{ inputs.build_args_script }}
+        run: |
+          {
+            echo 'resolved<<BUILD_ARGS_EOF'
+            bash -e -o pipefail -c "$SCRIPT"
+            echo 'BUILD_ARGS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and push Docker image to GHCR
         id: build
         uses: docker/build-push-action@v7
@@ -289,6 +311,11 @@ jobs:
           build-args: |
             SSH_PRIVATE_KEY=${{ secrets.private_key }}
             ${{ inputs.build_args }}
+            ${{ steps.build-args.outputs.resolved }}
+          # Also write the image as a docker archive so Trivy scans it from
+          # disk: pulling it back from ghcr cost 9 to 11s on a 94MB image,
+          # the walk itself 3 to 4s.
+          outputs: ${{ inputs.skip_vulnerability_scan == false && 'type=docker,dest=/tmp/image.tar' || '' }}
           # layer cache lives next to the image on ghcr under a :buildcache
           # tag: one blob push per layer, no gha cache api chunking, no 10GB
           # per-repo eviction. mode=max keeps intermediate stages (deps).
@@ -315,7 +342,7 @@ jobs:
             --skip-version-check \
             --severity HIGH,CRITICAL \
             --exit-code 1 \
-            "${{ matrix.ghcr_image }}:${{ github.sha }}"
+            --input /tmp/image.tar
 
       # ---- Distribute: the same digest to every registry, in this job. A
       # separate push job per (image × registry) cost 6 to 13s of runner

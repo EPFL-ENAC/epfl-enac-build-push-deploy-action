@@ -5,6 +5,16 @@ All notable changes to EPFL ENAC-IT Continuous Deployment Action will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] - 2026-09-17
+
+### Added
+
+- `build_args_script`: a script run in each build job whose stdout lines become build args. Lets callers drop a separate version job in front of `deploy` (~10s of job boundaries per run).
+
+### Changed
+
+- Trivy scans the image from a docker archive written by the build (`outputs: type=docker`) instead of pulling it back from ghcr: 9 to 11s less on a 94MB image, nothing on small ones.
+
 ## [3.4.0] - 2026-09-17
 
 ### Changed
