@@ -5,6 +5,12 @@ All notable changes to EPFL ENAC-IT Continuous Deployment Action will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2026-09-17
+
+### Added
+
+- `helm_chart_path` / `helm_chart_render_args`: the workflow packages and pushes the Helm chart itself in a `publish-chart` job that runs alongside the image builds. Only `update-manifest` waits for it, so callers no longer need their own chart job in front of `deploy`.
+
 ## [3.2.0] - 2026-09-17
 
 ### Changed
