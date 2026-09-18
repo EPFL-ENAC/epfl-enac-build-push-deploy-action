@@ -286,8 +286,10 @@ jobs:
             ctx=$(jq -r .context <<< "$entry"); image=$(jq -r .ghcr_image <<< "$entry")
             key=$(key_for "$ctx"); prev=""; digest=""
             if [ "$REUSE" = "true" ] && [ "$GITHUB_REF_TYPE" != "tag" ]; then
-              prev=$(crane config "$image:$branch_tag" 2>/dev/null | jq -r '.config.Labels["enac.build.key"] // ""')
-              [ -n "$prev" ] && digest=$(crane digest "$image:$branch_tag")
+              # no image under this branch tag yet (first push, new branch) is
+              # a normal case, not an error: the step runs with pipefail
+              prev=$(crane config "$image:$branch_tag" 2>/dev/null | jq -r '.config.Labels["enac.build.key"] // ""' || true)
+              [ -z "$prev" ] || digest=$(crane digest "$image:$branch_tag")
             fi
             reuse=false; [ -n "$prev" ] && [ "$prev" = "$key" ] && reuse=true
             echo "$(jq -r .name <<< "$entry"): key=$key previous=${prev:-none} reuse=$reuse"
