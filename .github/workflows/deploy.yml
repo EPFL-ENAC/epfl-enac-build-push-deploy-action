@@ -534,14 +534,59 @@ jobs:
         working-directory: ${{ inputs.helm_chart_path }}
     outputs:
       chart_version: ${{ steps.version.outputs.chart_version }}
+      chart_pushed: ${{ steps.version.outputs.chart_pushed }}
     steps:
       - uses: actions/checkout@v7
 
       - name: Login to GHCR
         # helm's own login: no Node action boot, no post-job logout step
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          CRANE_VERSION=v0.21.7
+          CRANE_SHA256=1a57bc98207fa1c0d04bf760699099e26f8383499bfd55b99c1b919a928a7230
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" -o /tmp/crane.tar.gz
+          echo "${CRANE_SHA256}  /tmp/crane.tar.gz" | sha256sum -c
+          tar -C /tmp -xzf /tmp/crane.tar.gz crane && sudo mv /tmp/crane /usr/local/bin/
+          echo "${{ secrets.GITHUB_TOKEN }}" | crane auth login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Chart version
+        id: version
+        # Same ref rules as set-branch below: tag → release, stage → rc,
+        # every other branch → dev. With reuse_unchanged_images, an unchanged
+        # chart directory keeps the version already published for this
+        # branch (its enac.build.key annotation matches), so the manifest
+        # line does not move and Argo has nothing to sync.
+        env:
+          REUSE: ${{ inputs.reuse_unchanged_images }}
+          CHART_PATH: ${{ inputs.helm_chart_path }}
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/*)      v="1.0.${GITHUB_RUN_NUMBER}"; suffix="" ;;
+            refs/heads/stage) v="1.0.${GITHUB_RUN_NUMBER}-rc"; suffix="-rc" ;;
+            *)                v="1.0.${GITHUB_RUN_NUMBER}-dev"; suffix="-dev" ;;
+          esac
+          key=$(git -C "$GITHUB_WORKSPACE" rev-parse "HEAD:${CHART_PATH#./}")
+          name=$(helm show chart . | awk '/^name:/{print $2}')
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}/helm/$name"
+          pushed=true
+          if [ "$REUSE" = "true" ] && [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            if [ -n "$suffix" ]; then prev=$(crane ls "$repo" 2>/dev/null | grep -- "$suffix\$" | sort -t. -k3 -n | tail -1 || true)
+            else prev=$(crane ls "$repo" 2>/dev/null | grep -vE -- '-(dev|rc)$' | sort -t. -k3 -n | tail -1 || true); fi
+            prev_key=""; [ -z "$prev" ] || prev_key=$(crane config "$repo:$prev" 2>/dev/null | jq -r '.annotations["enac.build.key"] // ""' || true)
+            if [ -n "$prev_key" ] && [ "$prev_key" = "$key" ]; then v="$prev"; pushed=false; fi
+            echo "chart: key=$key previous=${prev:-none} (key ${prev_key:-none}) reuse=$([ $pushed = false ] && echo true || echo false)"
+          fi
+          echo "chart_version=$v" >> "$GITHUB_OUTPUT"
+          echo "chart_pushed=$pushed" >> "$GITHUB_OUTPUT"
+          echo "chart_key=$key" >> "$GITHUB_OUTPUT"
+          {
+            echo "| Chart | Decision | Build key | Previous key |"; echo "| --- | --- | --- | --- |"
+            echo "| \`$name\` | **$([ $pushed = true ] && echo publish || echo reuse)** $v | \`${key:0:12}\` | \`${prev_key:0:12}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$v (pushed=$pushed)"
 
       - name: Render chart
+        if: ${{ steps.version.outputs.chart_pushed == 'true' }}
         # A failing render is the signal; the manifest itself goes to
         # /dev/null (thousands of log lines otherwise).
         env:
@@ -555,21 +600,11 @@ jobs:
             [ -z "$line" ] || helm template . $line > /dev/null
           done <<< "$RENDER_ARGS"
 
-      - name: Chart version
-        id: version
-        # Same ref rules as set-branch below: tag → release, stage → rc,
-        # every other branch → dev.
-        run: |
-          case "$GITHUB_REF" in
-            refs/tags/*)      v="1.0.${GITHUB_RUN_NUMBER}" ;;
-            refs/heads/stage) v="1.0.${GITHUB_RUN_NUMBER}-rc" ;;
-            *)                v="1.0.${GITHUB_RUN_NUMBER}-dev" ;;
-          esac
-          echo "chart_version=$v" >> "$GITHUB_OUTPUT"
-          echo "$v"
-
       - name: Package and push chart
+        if: ${{ steps.version.outputs.chart_pushed == 'true' }}
         run: |
+          # the key travels in Chart.yaml annotations, read back by the next run
+          yq -i '.annotations["enac.build.key"] = "${{ steps.version.outputs.chart_key }}"' Chart.yaml
           tgz=$(helm package --version "${{ steps.version.outputs.chart_version }}" . | sed 's/.*saved it to: //')
           helm push "$tgz" "oci://ghcr.io/${GITHUB_REPOSITORY,,}/helm"
 
@@ -604,8 +639,26 @@ jobs:
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           echo "branch=${branch:-<none, no dispatch>}"
 
+      - name: Anything to deploy?
+        id: changed
+        env:
+          BUILD_MATRIX: ${{ needs.define-matrix.outputs.build_matrix }}
+          CHART_PUSHED: ${{ needs.publish-chart.outputs.chart_pushed }}
+          CHART_INPUT: ${{ inputs.helm_chart_version }}
+        run: |
+          # Every image reused and the chart unchanged means the manifest would
+          # be byte-identical: skip the commit, the Argo sync and its hooks.
+          built=$(jq -r '[.[] | select(.reuse != true)] | length' <<< "$BUILD_MATRIX")
+          any=false
+          [ "$built" = 0 ] && [ "$CHART_PUSHED" != true ] && [ -z "$CHART_INPUT" ] || any=true
+          echo "any=$any" >> "$GITHUB_OUTPUT"
+          if [ "$any" = false ]; then
+            echo "Nothing changed: every image reused, chart unchanged. Manifest repos not dispatched."
+            echo "**Manifest update skipped**: every image reused and the chart is unchanged, the overlays already hold these digests and this chart version." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Deploy application
-        if: steps.set-branch.outputs.branch != ''
+        if: steps.set-branch.outputs.branch != '' && steps.changed.outputs.any == 'true'
         # One job for every Argo repo: a dispatch is one curl, and a second
         # runner for it waited up to 38s in the queue on busy mornings.
         env:

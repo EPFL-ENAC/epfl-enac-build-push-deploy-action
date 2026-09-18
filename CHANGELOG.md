@@ -5,6 +5,13 @@ All notable changes to EPFL ENAC-IT Continuous Deployment Action will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] - 2026-09-18
+
+### Changed
+
+- With `reuse_unchanged_images`, the Helm chart is reused too: an unchanged chart directory keeps the version already published for the branch (matched through an `enac.build.key` annotation in Chart.yaml) instead of a new `1.0.<run>` number. Before, every run bumped the chart version, which was the only line that changed in the overlay when all images were reused, and enough to make Argo sync and run the chart hooks for identical pods.
+- `update-manifest` skips the dispatch when every image was reused and the chart is unchanged. The run summary says so.
+
 ## [3.7.0] - 2026-09-18
 
 ### Changed
