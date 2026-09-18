@@ -290,6 +290,12 @@ jobs:
             } | sha256sum | cut -c1-40
           }
           reuse_json='[]'
+          {
+            echo "### Images"
+            echo
+            echo "| Image | Decision | Build key | Previous key (\`$branch_tag\` tag) |"
+            echo "| --- | --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
           for entry in $(jq -c '.[]' <<< "$build_matrix"); do
             ctx=$(jq -r .context <<< "$entry"); image=$(jq -r .ghcr_image <<< "$entry")
             key=$(key_for "$ctx"); prev=""; digest=""
@@ -299,10 +305,18 @@ jobs:
               prev=$(crane config "$image:$branch_tag" 2>/dev/null | jq -r '.config.Labels["enac.build.key"] // ""' || true)
               [ -z "$prev" ] || digest=$(crane digest "$image:$branch_tag")
             fi
-            reuse=false; [ -n "$prev" ] && [ "$prev" = "$key" ] && reuse=true
-            echo "$(jq -r .name <<< "$entry"): key=$key previous=${prev:-none} reuse=$reuse"
-            reuse_json=$(jq -c --arg id "$(jq -r .id <<< "$entry")" --arg key "$key" --argjson reuse "$reuse" --arg digest "$digest" \
-              '. + [{id: ($id | tonumber), build_key: $key, reuse: $reuse, reuse_digest: $digest}]' <<< "$reuse_json")
+            reuse=false; mode=build; [ -n "$prev" ] && [ "$prev" = "$key" ] && { reuse=true; mode=reuse; }
+            name=$(jq -r .name <<< "$entry")
+            echo "$name: key=$key previous=${prev:-none} reuse=$reuse"
+            case "$GITHUB_REF_TYPE:$REUSE:$prev" in
+              tag:*)     why="tag build: always rebuilt" ;;
+              *:true:)   why="no image under this tag yet: first build" ;;
+              *:true:*)  why=$([ "$reuse" = true ] && echo "inputs unchanged: re-tagged, no build" || echo "inputs changed: rebuilt") ;;
+              *)         why="reuse_unchanged_images is off: rebuilt" ;;
+            esac
+            echo "| $name | **$mode** ($why) | \`${key:0:12}\` | \`${prev:0:12}\` |" >> "$GITHUB_STEP_SUMMARY"
+            reuse_json=$(jq -c --arg id "$(jq -r .id <<< "$entry")" --arg key "$key" --argjson reuse "$reuse" --arg digest "$digest" --arg mode "$mode" \
+              '. + [{id: ($id | tonumber), build_key: $key, reuse: $reuse, reuse_digest: $digest, mode: $mode}]' <<< "$reuse_json")
           done
           build_matrix=$(jq -nc --argjson b "$build_matrix" --argjson r "$reuse_json" \
             '$b | map(.id as $id | . + ($r[] | select(.id == $id) | del(.id)))')
@@ -328,7 +342,8 @@ jobs:
           echo "Manifest: ${{ steps.set-matrix.outputs.manifest_matrix }}"
 
   build:
-    name: build ${{ matrix.name }}
+    # "build frontend" or "reuse frontend": the decision is readable from the run graph
+    name: ${{ matrix.mode }} ${{ matrix.name }}
     runs-on: ubuntu-latest
     needs: define-matrix
     strategy:

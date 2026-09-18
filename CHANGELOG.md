@@ -5,6 +5,12 @@ All notable changes to EPFL ENAC-IT Continuous Deployment Action will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.1] - 2026-09-18
+
+### Changed
+
+- The reuse decision is visible from the run page: the build job is named `build <image>` or `reuse <image>`, and the run summary carries a table with the decision, its reason and both build keys per image.
+
 ## [3.6.0] - 2026-09-18
 
 ### Added
