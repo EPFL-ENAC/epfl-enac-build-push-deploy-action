@@ -290,7 +290,7 @@ import * as Sentry from '@sentry/vue'
 
 Sentry.init({
   dsn: import.meta.env.VITE_GLITCHTIP_DSN,
-  release: import.meta.env.VITE_APP_VERSION, // full git SHA, baked at build time
+  release: `co2-calculator@${import.meta.env.VITE_APP_VERSION}`, // name@sha: several projects can share one GlitchTip
   environment: import.meta.env.MODE,
 })
 ```
@@ -304,8 +304,9 @@ The **backend** and **docs** Dockerfiles in the same matrix don't need to consum
 ### Other use cases
 
 - `APP_VERSION=${{ github.ref_name }}` — bake a tag like `v1.2.3` into a backend response header.
-- `BUILD_DATE=${{ github.event.repository.updated_at }}` — for OCI labels.
-- `NPM_TOKEN=${{ secrets.NPM_TOKEN }}` — for private npm packages (prefer secrets/SSH keys for credentials, but the mechanism works).
+- `BUILD_DATE=${{ github.event.head_commit.timestamp }}` — for OCI labels (`repository.updated_at` is the repo's last push on any branch, not this build).
+
+Never pass credentials as build args: they persist in the image config and layer history, readable by anyone who can pull the image. Private package registries need BuildKit `--mount=type=secret`, which this workflow does not expose yet.
 
 ## Skipping unchanged images
 

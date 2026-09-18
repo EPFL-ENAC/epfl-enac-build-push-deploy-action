@@ -54,6 +54,8 @@ name: example_workflow
 
 # ============================================================================
 # Example 3: Bake GIT_SHA into the build (e.g. co2-calculator + GlitchTip)
+# This is the one runnable `jobs:` block; examples 1 and 2 above are commented
+# out so the file stays a single valid workflow. Copy whichever fits.
 # ============================================================================
 # Forwards GIT_SHA to every Dockerfile in build_context. Frontends can read it
 # at build time (VITE_APP_VERSION / NEXT_PUBLIC_APP_VERSION / etc.) and pass it
