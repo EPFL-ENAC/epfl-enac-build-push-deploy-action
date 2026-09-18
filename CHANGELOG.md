@@ -5,6 +5,13 @@ All notable changes to EPFL ENAC-IT Continuous Deployment Action will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0] - 2026-09-18
+
+### Added
+
+- `reuse_unchanged_images` (opt-in): an image whose build context (plus `build_key_paths`) is unchanged since the last push on the branch is re-tagged instead of rebuilt. Built images carry an `enac.build.key` label for the comparison; tag builds always rebuild. Reused images are rescanned with the current DB unless `rescan_reused_images: false`. Default behaviour for existing callers is unchanged.
+- README architecture and caching sections rewritten for the 3.4 to 3.6 flow (build jobs distribute, chart job, no push jobs).
+
 ## [3.5.0] - 2026-09-17
 
 ### Added
