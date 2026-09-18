@@ -5,6 +5,13 @@ All notable changes to EPFL ENAC-IT Continuous Deployment Action will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] - 2026-09-18
+
+### Changed
+
+- The reuse decision is visible from the run page: the build job is named `build <image>` or `reuse <image>`, and the run summary carries a table with the decision, its reason and both build keys per image.
+- `update-manifest` is a single job that dispatches to every Argo repo in turn, instead of one job per repo. A second runner for a one-curl job waited up to 38s in the queue on busy mornings (co2-calculator runs 1755 and 1756); the payload is unchanged.
+
 ## [3.6.0] - 2026-09-18
 
 ### Added

@@ -20,7 +20,7 @@ define-matrix ─┬─ build <image> (one job per build context, in parallel) �
    - **unchanged inputs** (opt-in, `reuse_unchanged_images`): re-tags the digest already deployed on this branch with the new sha, about 1s, and rescans it with today's DB unless `rescan_reused_images: false`;
    - then, either way: copies the sha tag to every other registry with [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md) (byte-identical, **same digest**), applies the branch or release tags, and uploads the image data for the manifest step.
 3. **publish-chart** (only with `helm_chart_path`): renders, packages and pushes the Helm chart beside the builds; only update-manifest waits for it.
-4. **update-manifest**: one job per Argo repo, dispatches the image digests, tags and chart version.
+4. **update-manifest**: one job, dispatches the image digests, tags and chart version to every Argo repo.
 
 ghcr.io is the source of truth; every other registry holds an exact copy of the scanned image. With reuse on, a docs-only commit in a repo with three contexts rebuilds one image and re-tags two.
 
@@ -312,7 +312,7 @@ Never pass credentials as build args: they persist in the image config and layer
 
 Off by default. With `reuse_unchanged_images: true`, every built image carries a label `enac.build.key`: a sha256 over the git tree of its build context plus every path in `build_key_paths`. On the next push to the same branch, `define-matrix` compares that key with the one on `<image>:<branch tag>`. Unchanged inputs mean the build job skips checkout, build and Trivy on the archive, re-tags the existing digest with the new sha (about 1s), rescans that image with today's DB (unless `rescan_reused_images: false`, for projects that run the scheduled `registry-scan.yml`), and distributes it as usual. A docs-only commit then no longer rebuilds the frontend and backend.
 
-Tag builds always rebuild. A reused image keeps the build args it was built with: a version stamp baked in at build time is the one of the commit that last changed that context, which is the code the pod runs. If that stamp is read from a file outside the contexts (a root `package.json`), list it in `build_key_paths` so a bump rebuilds every image. The first push after enabling rebuilds everything once, because older images have no label.
+Each run's summary page lists every image with its decision and both keys, and the job is named `build <image>` or `reuse <image>` accordingly. Tag builds always rebuild. A reused image keeps the build args it was built with: a version stamp baked in at build time is the one of the commit that last changed that context, which is the code the pod runs. If that stamp is read from a file outside the contexts (a root `package.json`), list it in `build_key_paths` so a bump rebuilds every image. The first push after enabling rebuilds everything once, because older images have no label.
 
 ```yaml
     with:
