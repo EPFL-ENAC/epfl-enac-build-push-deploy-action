@@ -49,6 +49,27 @@ on:
         required: false
         type: string
         default: '["./"]'
+      reuse_unchanged_images:
+        required: false
+        type: boolean
+        default: true
+        description: |
+          Skip the build when an image's inputs are unchanged since the last
+          image pushed for this branch: the existing image is re-tagged with
+          the new sha and distributed as usual, and its Trivy scan is not
+          repeated (registry-scan.yml covers CVEs published later). Inputs
+          = the git tree of the build context plus build_key_paths. Tag
+          builds always rebuild. The reused image keeps the build args it was
+          built with (a baked-in version stamp stays that of the commit that
+          last changed the context).
+      build_key_paths:
+        required: false
+        type: string
+        default: ""
+        description: |
+          Repo paths outside the build contexts that must also trigger a
+          rebuild when they change, one per line (a root package.json a
+          version stamp is read from, for example).
       image_name: # work only for "./" build context, to override default's default
         required: false
         type: string
@@ -130,10 +151,27 @@ env:
 jobs:
   define-matrix:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     outputs:
       build_matrix: ${{ steps.set-matrix.outputs.build_matrix }}
       manifest_matrix: ${{ steps.set-matrix.outputs.manifest_matrix }}
     steps:
+      - name: Checkout repository
+        # depth 1 is enough: build keys are tree hashes of HEAD, no history
+        uses: actions/checkout@v7
+
+      - name: Install crane (pinned)
+        run: |
+          CRANE_VERSION=v0.21.7
+          CRANE_SHA256=1a57bc98207fa1c0d04bf760699099e26f8383499bfd55b99c1b919a928a7230
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" -o crane.tar.gz
+          echo "${CRANE_SHA256}  crane.tar.gz" | sha256sum -c
+          tar xzf crane.tar.gz crane
+          sudo mv crane /usr/local/bin/
+          echo "${{ secrets.GITHUB_TOKEN }}" | crane auth login ghcr.io -u "${{ github.actor }}" --password-stdin
+
       - name: lowercase repo owner
         run: |
           echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> ${GITHUB_ENV};
@@ -148,6 +186,9 @@ jobs:
       - name: Build matrices
         id: set-matrix
         shell: bash
+        env:
+          REUSE: ${{ inputs.reuse_unchanged_images }}
+          KEY_PATHS: ${{ inputs.build_key_paths }}
         run: |
           # --- Determine registries configuration ---
           registries_input='${{ inputs.registries }}'
@@ -229,6 +270,32 @@ jobs:
           # fanning out into a second job per (image × registry).
           build_matrix=$(jq -nc --argjson b "$build_matrix" --argjson p "$push_matrix" \
             '$b | map(.id as $id | . + {targets: [$p[] | select(.build_id == $id)]})')
+          # --- Reuse: skip images whose inputs did not change since the last
+          # image pushed for this branch. Key = sha256 over the git tree of the
+          # context and of every build_key_paths entry; the previous key is the
+          # enac.build.key label on <image>:<branch tag>. Tag refs always build.
+          branch_tag=$(printf '%s' "$GITHUB_REF_NAME" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          key_for() {
+            ctx="${1#./}"
+            { if [ "$ctx" = "." ]; then git rev-parse "HEAD^{tree}"; else git rev-parse "HEAD:$ctx"; fi
+              while IFS= read -r p; do [ -z "$p" ] || git rev-parse "HEAD:$p"; done <<< "$KEY_PATHS"
+            } | sha256sum | cut -c1-40
+          }
+          reuse_json='[]'
+          for entry in $(jq -c '.[]' <<< "$build_matrix"); do
+            ctx=$(jq -r .context <<< "$entry"); image=$(jq -r .ghcr_image <<< "$entry")
+            key=$(key_for "$ctx"); prev=""; digest=""
+            if [ "$REUSE" = "true" ] && [ "$GITHUB_REF_TYPE" != "tag" ]; then
+              prev=$(crane config "$image:$branch_tag" 2>/dev/null | jq -r '.config.Labels["enac.build.key"] // ""')
+              [ -n "$prev" ] && digest=$(crane digest "$image:$branch_tag")
+            fi
+            reuse=false; [ -n "$prev" ] && [ "$prev" = "$key" ] && reuse=true
+            echo "$(jq -r .name <<< "$entry"): key=$key previous=${prev:-none} reuse=$reuse"
+            reuse_json=$(jq -c --arg id "$(jq -r .id <<< "$entry")" --arg key "$key" --argjson reuse "$reuse" --arg digest "$digest" \
+              '. + [{id: ($id | tonumber), build_key: $key, reuse: $reuse, reuse_digest: $digest}]' <<< "$reuse_json")
+          done
+          build_matrix=$(jq -nc --argjson b "$build_matrix" --argjson r "$reuse_json" \
+            '$b | map(.id as $id | . + ($r[] | select(.id == $id) | del(.id)))')
           echo "build_matrix=$build_matrix" >> "$GITHUB_OUTPUT"
           echo "Build matrix: $build_matrix"
 
@@ -263,12 +330,14 @@ jobs:
       packages: write
     steps:
       - name: Checkout repository
+        if: ${{ !matrix.reuse }}
         uses: actions/checkout@v7
         with:
           lfs: ${{ inputs.lfs }}
           submodules: ${{ inputs.submodules }}
 
       - name: Set up Docker Buildx
+        if: ${{ !matrix.reuse }}
         uses: docker/setup-buildx-action@v4
         with:
           # the runner is discarded after the job; `docker buildx rm` in
@@ -284,7 +353,7 @@ jobs:
 
       - name: Resolve build args
         id: build-args
-        if: inputs.build_args_script != ''
+        if: ${{ !matrix.reuse && inputs.build_args_script != '' }}
         env:
           SCRIPT: ${{ inputs.build_args_script }}
         run: |
@@ -295,6 +364,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image to GHCR
+        if: ${{ !matrix.reuse }}
         id: build
         uses: docker/build-push-action@v7
         env:
@@ -308,6 +378,8 @@ jobs:
           provenance: false
           push: true
           tags: ${{ matrix.ghcr_image }}:${{ github.sha }}
+          # read back by define-matrix on the next run to decide reuse
+          labels: enac.build.key=${{ matrix.build_key }}
           build-args: |
             SSH_PRIVATE_KEY=${{ secrets.private_key }}
             ${{ inputs.build_args }}
@@ -323,7 +395,7 @@ jobs:
           cache-to: type=registry,ref=${{ matrix.ghcr_image }}:buildcache,mode=max
 
       - name: Install Trivy (pinned)
-        if: inputs.skip_vulnerability_scan == false
+        if: ${{ !matrix.reuse && inputs.skip_vulnerability_scan == false }}
         run: |
           # Version-pinned with a hardcoded checksum: installing from a live
           # apt repo or action would run whatever it serves that day as root.
@@ -336,7 +408,7 @@ jobs:
           sudo install -m 755 trivy /usr/local/bin/trivy
 
       - name: Scan image with Trivy
-        if: inputs.skip_vulnerability_scan == false
+        if: ${{ !matrix.reuse && inputs.skip_vulnerability_scan == false }}
         run: |
           trivy image \
             --skip-version-check \
@@ -355,6 +427,13 @@ jobs:
           echo "${CRANE_SHA256}  crane.tar.gz" | sha256sum -c
           tar xzf crane.tar.gz crane
           sudo mv crane /usr/local/bin/
+
+      - name: Reuse the unchanged image
+        if: ${{ matrix.reuse }}
+        # Inputs identical to the image already deployed on this branch: point
+        # the new sha tag at that digest, no build, no scan (see
+        # reuse_unchanged_images). The copies below then run unchanged.
+        run: crane tag "${{ matrix.ghcr_image }}@${{ matrix.reuse_digest }}" "${{ github.sha }}"
 
       - name: Login to the other registries
         env:

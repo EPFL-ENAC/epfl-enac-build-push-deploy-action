@@ -9,35 +9,26 @@ This action implements ENAC-IT's Continuous Deployment for your app on a given e
 
 ## Architecture
 
-The workflow is split into 4 jobs:
-
 ```
-define-matrix → build → push → update-manifest
+define-matrix ─┬─ build <image> (one job per build context, in parallel) ─┐
+               └─ publish-chart (optional) ───────────────────────────────┴─ update-manifest
 ```
 
-1. **define-matrix**: computes build contexts, registry targets, and manifest repos
-2. **build**: builds Docker images once and pushes them to ghcr.io (`:sha` tag), runs vulnerability scan, caches all layers on ghcr under a `:buildcache` tag (`type=registry, mode=max`)
-3. **build** (same job, after the scan): copies the ghcr image to each other registry with [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md) and applies the release/branch tags. No rebuild: every registry receives a byte-identical copy with the **same digest**
-4. **update-manifest**: downloads image metadata artifacts, dispatches to each ArgoCD manifest repo
+1. **define-matrix** (about 5s): computes the build contexts, the registry targets and the manifest repos. For each image it also computes a build key (sha256 over the git tree of the context plus `build_key_paths`) and reads the key of the image currently tagged with this branch on ghcr. Same key → that image is marked for reuse.
+2. **build \<image\>**, one job per context, all in parallel:
+   - **changed inputs**: builds once with BuildKit, pushes `:sha` to ghcr.io with the build key as the `enac.build.key` label, caches every layer on ghcr under `:buildcache` (`type=registry, mode=max`), scans the built archive with Trivy (HIGH/CRITICAL block the rollout);
+   - **unchanged inputs**: re-tags the digest already deployed on this branch with the new sha, about 1s, no build, no scan;
+   - then, either way: copies the sha tag to every other registry with [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md) (byte-identical, **same digest**), applies the branch or release tags, and uploads the image data for the manifest step.
+3. **publish-chart** (only with `helm_chart_path`): renders, packages and pushes the Helm chart beside the builds; only update-manifest waits for it.
+4. **update-manifest**: one job per Argo repo, dispatches the image digests, tags and chart version.
 
-This architecture ensures each image is built only **once**: ghcr.io is always the source of truth, and any additional registry gets an exact copy of the scanned image.
+ghcr.io is the source of truth; every other registry holds an exact copy of the scanned image. A docs-only commit in a repo with three contexts rebuilds one image and re-tags two.
 
 ### Docker Build Caching
 
-Docker layers are cached using GitHub Actions cache (`cache-to: type=gha,mode=max`). The `mode=max` setting caches **all** layers including intermediate build stages, which means package installations (npm, uv, pip, etc.) are cached as Docker layers. Subsequent builds reuse cached layers when the relevant files haven't changed.
+Layers are cached on ghcr next to the image, under `<image>:buildcache` (`cache-to: type=registry,mode=max`). `mode=max` keeps intermediate stages too, so a dependency install layer (npm, uv, pip) is reused as long as the lockfile above it is unchanged. Keep per-commit values (`ARG GIT_SHA`, version stamps) **below** the dependency install in the Dockerfile: BuildKit folds ENV and ARG into the cache key of every later RUN, and a value that changes on every commit above `npm ci` reinstalls everything on every push.
 
-For even more granular caching inside Docker builds, use BuildKit cache mounts in your Dockerfile:
-
-```dockerfile
-# npm
-RUN --mount=type=cache,target=/root/.npm npm ci
-
-# uv
-RUN --mount=type=cache,target=/root/.cache/uv uv sync
-
-# pip
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
-```
+BuildKit cache mounts (`RUN --mount=type=cache,target=/root/.npm npm ci`) still help local builds, but hosted runners start empty every job, so in CI only the layer cache counts.
 
 To use it in your repository, create a workflow file named `.github/workflows/deploy.yml` with the following content:
 
@@ -316,6 +307,10 @@ The **backend** and **docs** Dockerfiles in the same matrix don't need to consum
 - `BUILD_DATE=${{ github.event.repository.updated_at }}` — for OCI labels.
 - `NPM_TOKEN=${{ secrets.NPM_TOKEN }}` — for private npm packages (prefer secrets/SSH keys for credentials, but the mechanism works).
 
+## Skipping unchanged images
+
+Every built image carries a label `enac.build.key`: a sha256 over the git tree of its build context plus every path in `build_key_paths`. On the next push to the same branch, `define-matrix` compares that key with the one on `<image>:<branch tag>`. Unchanged inputs mean the build job skips checkout, build and scan, re-tags the existing digest with the new sha (about 1s) and distributes it as usual, so a docs-only commit no longer rebuilds the frontend and backend. Tag builds always rebuild. A reused image keeps the build args it was built with: a version stamp baked in at build time is the one of the commit that last changed that context, which is the code the pod runs. New CVEs on a reused image are caught by the scheduled `registry-scan.yml`, not per deploy. Set `reuse_unchanged_images: false` to rebuild on every push.
+
 ## Publishing a Helm chart
 
 Set `helm_chart_path` and the workflow packages and pushes the chart itself, in a job that runs in parallel with the image builds instead of gating them:
@@ -388,6 +383,11 @@ Trivy and crane are installed version-pinned with hardcoded checksums (no live a
     - Shell script run in each build job after checkout, from the repository root - (optional)
     - Every stdout line is a `KEY=VALUE` build arg appended to `build_args`; write diagnostics to stderr
     - For values that need the checkout, such as a version read from `package.json` or the commit date. Runs once per image in parallel, so derive from the commit rather than the clock if the images must agree
+  - `reuse_unchanged_images`:
+    - Skip the build when an image's inputs are unchanged since the last image pushed for this branch - (optional, default true)
+    - See [Skipping unchanged images](#skipping-unchanged-images)
+  - `build_key_paths`:
+    - Repo paths outside the build contexts that also trigger a rebuild when they change, one per line - (optional)
   - `build_context`:
     - The context of the build - (optional)
     - Currently we support max 9 contexts/ or build image per repository
