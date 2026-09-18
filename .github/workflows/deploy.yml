@@ -52,16 +52,24 @@ on:
       reuse_unchanged_images:
         required: false
         type: boolean
+        default: false
+        description: |
+          Opt in to skip the build when an image's inputs are unchanged since
+          the last image pushed for this branch: the existing image is
+          re-tagged with the new sha, rescanned (see rescan_reused_images)
+          and distributed as usual. Inputs = the git tree of the build
+          context plus build_key_paths. Tag builds always rebuild. The reused
+          image keeps the build args it was built with (a baked-in version
+          stamp stays that of the commit that last changed the context).
+      rescan_reused_images:
+        required: false
+        type: boolean
         default: true
         description: |
-          Skip the build when an image's inputs are unchanged since the last
-          image pushed for this branch: the existing image is re-tagged with
-          the new sha and distributed as usual, and its Trivy scan is not
-          repeated (registry-scan.yml covers CVEs published later). Inputs
-          = the git tree of the build context plus build_key_paths. Tag
-          builds always rebuild. The reused image keeps the build args it was
-          built with (a baked-in version stamp stays that of the commit that
-          last changed the context).
+          Run the Trivy scan on a reused image too (pulled from ghcr, 6 to
+          13s), so a CVE published since it was built still blocks the
+          rollout exactly as a rebuild would. Set false only if a scheduled
+          scan of the registry (registry-scan.yml) covers that project.
       build_key_paths:
         required: false
         type: string
@@ -397,7 +405,7 @@ jobs:
           cache-to: type=registry,ref=${{ matrix.ghcr_image }}:buildcache,mode=max
 
       - name: Install Trivy (pinned)
-        if: ${{ !matrix.reuse && inputs.skip_vulnerability_scan == false }}
+        if: ${{ inputs.skip_vulnerability_scan == false && (!matrix.reuse || inputs.rescan_reused_images) }}
         run: |
           # Version-pinned with a hardcoded checksum: installing from a live
           # apt repo or action would run whatever it serves that day as root.
@@ -433,9 +441,20 @@ jobs:
       - name: Reuse the unchanged image
         if: ${{ matrix.reuse }}
         # Inputs identical to the image already deployed on this branch: point
-        # the new sha tag at that digest, no build, no scan (see
-        # reuse_unchanged_images). The copies below then run unchanged.
+        # the new sha tag at that digest, no build (see reuse_unchanged_images).
+        # The copies below then run unchanged.
         run: crane tag "${{ matrix.ghcr_image }}@${{ matrix.reuse_digest }}" "${{ github.sha }}"
+
+      - name: Scan the reused image with Trivy
+        if: ${{ matrix.reuse && inputs.skip_vulnerability_scan == false && inputs.rescan_reused_images }}
+        # Same gate as a rebuild, with today's DB: a CVE published since the
+        # image was built blocks the rollout here too.
+        run: |
+          trivy image \
+            --skip-version-check \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            "${{ matrix.ghcr_image }}@${{ matrix.reuse_digest }}"
 
       - name: Login to the other registries
         env:

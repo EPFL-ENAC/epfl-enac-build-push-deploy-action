@@ -5,22 +5,12 @@ All notable changes to EPFL ENAC-IT Continuous Deployment Action will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.0.0] - 2026-09-18
-
-### Changed, breaking for the default behaviour
-
-- An image whose build context (plus `build_key_paths`) is unchanged since the last push on the branch is **re-tagged instead of rebuilt**, and its Trivy scan is not repeated (`registry-scan.yml` covers CVEs published later). Built images carry an `enac.build.key` label for the comparison; tag builds always rebuild. Consequences for callers: a pod may report a version stamp baked into an older image when its component did not change, and a push no longer guarantees a fresh scan of every image. `reuse_unchanged_images: false` restores the 3.x behaviour.
+## [3.6.0] - 2026-09-18
 
 ### Added
 
-- `reuse_unchanged_images` (default true), `build_key_paths`.
-- README architecture section rewritten for the 3.4 to 4.0 flow (build jobs distribute, chart job, no push jobs).
-
-### Upgrading from 3.x
-
-- Bump the `uses:` ref. No input is required.
-- If a version stamp is read from a file outside the build contexts (a root `package.json`), list it in `build_key_paths` so a bump rebuilds every image.
-- The first run after the upgrade rebuilds everything once: the label does not exist on images built before 4.0.0.
+- `reuse_unchanged_images` (opt-in): an image whose build context (plus `build_key_paths`) is unchanged since the last push on the branch is re-tagged instead of rebuilt. Built images carry an `enac.build.key` label for the comparison; tag builds always rebuild. Reused images are rescanned with the current DB unless `rescan_reused_images: false`. Default behaviour for existing callers is unchanged.
+- README architecture and caching sections rewritten for the 3.4 to 3.6 flow (build jobs distribute, chart job, no push jobs).
 
 ## [3.5.0] - 2026-09-17
 

@@ -17,12 +17,12 @@ define-matrix ─┬─ build <image> (one job per build context, in parallel) �
 1. **define-matrix** (about 5s): computes the build contexts, the registry targets and the manifest repos. For each image it also computes a build key (sha256 over the git tree of the context plus `build_key_paths`) and reads the key of the image currently tagged with this branch on ghcr. Same key → that image is marked for reuse.
 2. **build \<image\>**, one job per context, all in parallel:
    - **changed inputs**: builds once with BuildKit, pushes `:sha` to ghcr.io with the build key as the `enac.build.key` label, caches every layer on ghcr under `:buildcache` (`type=registry, mode=max`), scans the built archive with Trivy (HIGH/CRITICAL block the rollout);
-   - **unchanged inputs**: re-tags the digest already deployed on this branch with the new sha, about 1s, no build, no scan;
+   - **unchanged inputs** (opt-in, `reuse_unchanged_images`): re-tags the digest already deployed on this branch with the new sha, about 1s, and rescans it with today's DB unless `rescan_reused_images: false`;
    - then, either way: copies the sha tag to every other registry with [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md) (byte-identical, **same digest**), applies the branch or release tags, and uploads the image data for the manifest step.
 3. **publish-chart** (only with `helm_chart_path`): renders, packages and pushes the Helm chart beside the builds; only update-manifest waits for it.
 4. **update-manifest**: one job per Argo repo, dispatches the image digests, tags and chart version.
 
-ghcr.io is the source of truth; every other registry holds an exact copy of the scanned image. A docs-only commit in a repo with three contexts rebuilds one image and re-tags two.
+ghcr.io is the source of truth; every other registry holds an exact copy of the scanned image. With reuse on, a docs-only commit in a repo with three contexts rebuilds one image and re-tags two.
 
 ### Docker Build Caching
 
@@ -309,7 +309,16 @@ The **backend** and **docs** Dockerfiles in the same matrix don't need to consum
 
 ## Skipping unchanged images
 
-Every built image carries a label `enac.build.key`: a sha256 over the git tree of its build context plus every path in `build_key_paths`. On the next push to the same branch, `define-matrix` compares that key with the one on `<image>:<branch tag>`. Unchanged inputs mean the build job skips checkout, build and scan, re-tags the existing digest with the new sha (about 1s) and distributes it as usual, so a docs-only commit no longer rebuilds the frontend and backend. Tag builds always rebuild. A reused image keeps the build args it was built with: a version stamp baked in at build time is the one of the commit that last changed that context, which is the code the pod runs. New CVEs on a reused image are caught by the scheduled `registry-scan.yml`, not per deploy. Set `reuse_unchanged_images: false` to rebuild on every push.
+Off by default. With `reuse_unchanged_images: true`, every built image carries a label `enac.build.key`: a sha256 over the git tree of its build context plus every path in `build_key_paths`. On the next push to the same branch, `define-matrix` compares that key with the one on `<image>:<branch tag>`. Unchanged inputs mean the build job skips checkout, build and Trivy on the archive, re-tags the existing digest with the new sha (about 1s), rescans that image with today's DB (unless `rescan_reused_images: false`, for projects that run the scheduled `registry-scan.yml`), and distributes it as usual. A docs-only commit then no longer rebuilds the frontend and backend.
+
+Tag builds always rebuild. A reused image keeps the build args it was built with: a version stamp baked in at build time is the one of the commit that last changed that context, which is the code the pod runs. If that stamp is read from a file outside the contexts (a root `package.json`), list it in `build_key_paths` so a bump rebuilds every image. The first push after enabling rebuilds everything once, because older images have no label.
+
+```yaml
+    with:
+      build_context: '[ "./frontend", "./backend", "./docs" ]'
+      reuse_unchanged_images: true
+      build_key_paths: package.json
+```
 
 ## Publishing a Helm chart
 
@@ -384,8 +393,11 @@ Trivy and crane are installed version-pinned with hardcoded checksums (no live a
     - Every stdout line is a `KEY=VALUE` build arg appended to `build_args`; write diagnostics to stderr
     - For values that need the checkout, such as a version read from `package.json` or the commit date. Runs once per image in parallel, so derive from the commit rather than the clock if the images must agree
   - `reuse_unchanged_images`:
-    - Skip the build when an image's inputs are unchanged since the last image pushed for this branch - (optional, default true)
+    - Opt in to skip the build when an image's inputs are unchanged since the last image pushed for this branch - (optional, default false)
     - See [Skipping unchanged images](#skipping-unchanged-images)
+  - `rescan_reused_images`:
+    - Run the Trivy scan on reused images too, so the gate is the same as for a rebuild - (optional, default true)
+    - Set false only when a scheduled registry scan covers the project
   - `build_key_paths`:
     - Repo paths outside the build contexts that also trigger a rebuild when they change, one per line - (optional)
   - `build_context`:
