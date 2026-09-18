@@ -7,6 +7,8 @@ This action implements ENAC-IT's Continuous Deployment for your app on a given e
 - if you push on the *stage* branch, same but overlay *stage*
 - if you push a tag (create a release: v1.0.0 for instance, it will update the overlay prod
 
+Upgrading from 3.1.0 or earlier: see [docs/migrating-from-3.1.md](docs/migrating-from-3.1.md).
+
 ## Architecture
 
 ```
