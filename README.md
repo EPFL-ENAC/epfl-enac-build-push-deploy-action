@@ -20,7 +20,7 @@ define-matrix ─┬─ build <image> (one job per build context, in parallel) �
    - **unchanged inputs** (opt-in, `reuse_unchanged_images`): re-tags the digest already deployed on this branch with the new sha, about 1s, and rescans it with today's DB unless `rescan_reused_images: false`;
    - then, either way: copies the sha tag to every other registry with [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md) (byte-identical, **same digest**), applies the branch or release tags, and uploads the image data for the manifest step.
 3. **publish-chart** (only with `helm_chart_path`): renders, packages and pushes the Helm chart beside the builds; only update-manifest waits for it.
-4. **update-manifest**: one job per Argo repo, dispatches the image digests, tags and chart version.
+4. **update-manifest**: one job, dispatches the image digests, tags and chart version to every Argo repo.
 
 ghcr.io is the source of truth; every other registry holds an exact copy of the scanned image. With reuse on, a docs-only commit in a repo with three contexts rebuilds one image and re-tags two.
 

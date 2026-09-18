@@ -582,10 +582,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJson(needs.define-matrix.outputs.manifest_matrix) }}
     steps:
       - name: Download all image data
         uses: actions/download-artifact@v8
@@ -594,62 +590,43 @@ jobs:
           pattern: image-data-*
           merge-multiple: true
 
-      - name: Process images for this registry
-        id: aggregate
-        run: |
-          registry="${{ matrix.registry }}"
-          images=$(jq -sc "[.[] | select(.registry == \"$registry\")]" /tmp/image-data/*.json)
-          echo "images=$images" >> $GITHUB_OUTPUT
-          echo "Images for $registry: $images"
-
       - name: Set branch name
         id: set-branch
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "branch=prod" >> $GITHUB_OUTPUT
-            echo "branch=prod"
-          fi
-          if [[ "${{ github.ref }}" == refs/heads/dev ]]; then
-            echo "branch=dev" >> $GITHUB_OUTPUT
-            echo "branch=dev"
-          fi
-          if [[ "${{ github.ref }}" == refs/heads/develop ]]; then
-            echo "branch=dev" >> $GITHUB_OUTPUT
-            echo "branch=dev (src:develop => dst:dev)"
-          fi
-          if [[ "${{ github.ref }}" == refs/heads/test ]]; then
-            echo "branch=test" >> $GITHUB_OUTPUT
-            echo "branch=test"
-          fi
-          if [[ "${{ github.ref }}" == refs/heads/stage ]]; then
-            echo "branch=stage" >> $GITHUB_OUTPUT
-            echo "branch=stage"
-          fi
+          case "${{ github.ref }}" in
+            refs/tags/*)        branch=prod ;;
+            refs/heads/dev)     branch=dev ;;
+            refs/heads/develop) branch=dev; echo "src:develop => dst:dev" ;;
+            refs/heads/test)    branch=test ;;
+            refs/heads/stage)   branch=stage ;;
+            *)                  branch="" ;;
+          esac
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "branch=${branch:-<none, no dispatch>}"
 
       - name: Deploy application
         if: steps.set-branch.outputs.branch != ''
+        # One job for every Argo repo: a dispatch is one curl, and a second
+        # runner for it waited up to 38s in the queue on busy mornings.
+        env:
+          MANIFEST_MATRIX: ${{ needs.define-matrix.outputs.manifest_matrix }}
+          TOKEN: ${{ secrets.token }}
+          CHART_VERSION: ${{ needs.publish-chart.outputs.chart_version || inputs.helm_chart_version }}
+          BRANCH: ${{ steps.set-branch.outputs.branch }}
         run: |
-          payload=$(cat <<EOF
-          {
-            "event_type": "update-manifest",
-            "client_payload": {
-              "repo_name": "${{ env.CD_REPO }}",
-              "repo_org": "${{ env.CD_ORG }}",
-              "branch": "${{ steps.set-branch.outputs.branch }}",
-              "images": ${{ steps.aggregate.outputs.images }},
-              "create_pull_request": ${{ env.CREATE_PULL_REQUEST }},
-              "helm_chart_name": "${{ inputs.helm_chart_name }}",
-              "helm_chart_version": "${{ needs.publish-chart.outputs.chart_version || inputs.helm_chart_version }}",
-              "triggered_by": "${{ github.actor }}",
-              "source_repo": "${{ github.repository }}",
-              "source_sha": "${{ github.sha }}"
-            }
-          }
-          EOF
-          ) && \
-          echo "Deploying to ${{ matrix.argo_repository }}" && \
-          echo "Payload: $payload" && \
-          curl --fail -X POST \
-          -H "Authorization: Bearer ${{ secrets.token }}" \
-          https://api.github.com/repos/${{ matrix.argo_repository }}/dispatches \
-          -d "$payload"
+          ok=true
+          jq -c '.[]' <<< "$MANIFEST_MATRIX" | while read -r target; do
+            registry=$(jq -r .registry <<< "$target"); repo=$(jq -r .argo_repository <<< "$target")
+            images=$(jq -sc --arg r "$registry" '[.[] | select(.registry == $r)]' /tmp/image-data/*.json)
+            payload=$(jq -nc --arg repo_name "${{ env.CD_REPO }}" --arg repo_org "${{ env.CD_ORG }}" --arg branch "$BRANCH" \
+              --argjson images "$images" --argjson pr "${{ env.CREATE_PULL_REQUEST }}" \
+              --arg chart "${{ inputs.helm_chart_name }}" --arg chart_version "$CHART_VERSION" \
+              --arg by "${{ github.actor }}" --arg src "${{ github.repository }}" --arg sha "${{ github.sha }}" \
+              '{event_type: "update-manifest", client_payload: {repo_name: $repo_name, repo_org: $repo_org, branch: $branch,
+                images: $images, create_pull_request: $pr, helm_chart_name: $chart, helm_chart_version: $chart_version,
+                triggered_by: $by, source_repo: $src, source_sha: $sha}}')
+            echo "Deploying to $repo ($registry): $payload"
+            curl --fail -sS -X POST -H "Authorization: Bearer $TOKEN" \
+              "https://api.github.com/repos/$repo/dispatches" -d "$payload" \
+              || { echo "::error::dispatch to $repo failed"; exit 1; }
+          done
