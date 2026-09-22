@@ -1,0 +1,19 @@
+name: test
+
+"on":
+  pull_request:
+    paths: ["scripts/**", ".github/workflows/test.yml"]
+  push:
+    branches: [main]
+    paths: ["scripts/**", ".github/workflows/test.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  update-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # ubuntu-latest ships jq and yq v4, the script's only dependencies
+      - run: make test

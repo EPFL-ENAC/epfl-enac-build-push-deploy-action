@@ -542,16 +542,17 @@ The client_payload object contains several options that control how the manifest
         }
 
 - Workflow Behavior
-  1) Checkout Repository: The workflow checks out the repository to the latest commit. Git LFS or submodules support can be activated if needed (case of some data files are included within the repository).
-  2) Install Dependencies: Installs necessary dependencies such as git, wget, curl, jq, and yq.
-  3) Modify Manifest:
-    - Navigates to the specified repository and branch.
-    - Updates the digest for the specified images in the kustomization.yaml file.
-    - If the branch is prod, it also updates the newTag field with the ref_name.
-  4) Commit and Push Changes:
-    - Commits the changes with a message indicating the update.
-    - If create_pull_request is true, it creates a new branch and pushes the changes.
-    - If create_pull_request is false, it pushes the changes directly to the main branch.
+
+  Both Argo repos' `update_manifest` workflows, and the GitLab
+  [build-push-deploy](https://gitlab.epfl.ch/EPFL-ENAC/build-push-deploy)
+  component, run the same [`scripts/update-manifest.sh`](scripts/update-manifest.sh),
+  pinned by commit SHA. It:
+  1) Reads `<repo_org>/<repo_name>/overlays/<branch>/kustomization.yaml` at `main` through the GitHub API.
+  2) Sets `digest` and `newTag` of each `images` entry whose `name` matches. It skips names the overlay does not list, and **fails** if none matches. Old payloads with only a `digest` update the first image.
+  3) Sets the version of the `helmCharts` entry named `helm_chart_name`, if the overlay has one.
+  4) Stops if nothing changed. Otherwise it commits on `main`, retrying if `main` moved, or with `create_pull_request` on `prod`, commits on a new branch and opens a PR.
+
+  Test it with `make test`.
 
  - Example Usage
 To update the manifest for the prod branch with a new image digest and tag, and create a pull request for the changes:
