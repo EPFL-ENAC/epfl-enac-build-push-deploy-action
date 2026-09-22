@@ -57,7 +57,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.8.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.9.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -73,7 +73,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.8.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.9.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -120,7 +120,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.8.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.9.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -145,7 +145,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.8.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.9.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
       registry_token: ${{ secrets.CUSTOM_REGISTRY_TOKEN }}
@@ -204,7 +204,7 @@ ssh-keygen -t ed25519 -C "github-actions@github.com"
 ```yml
 jobs:
   deploy:
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.8.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.9.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
       private_key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -254,7 +254,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.8.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.9.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
