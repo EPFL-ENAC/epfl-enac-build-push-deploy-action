@@ -5,6 +5,16 @@ All notable changes to EPFL ENAC-IT Continuous Deployment Action will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `scripts/update-manifest.sh`: the one writer of the Argo overlays. The `update_manifest` workflows of enack8s-app-config and openshift-app-config, and the GitLab `build-push-deploy` component, run it pinned by commit SHA, so a GitHub and a GitLab deploy edit an overlay the same way. `make test` runs it against a fake GitHub API.
+
+### Changed
+
+- A payload whose images match nothing in the overlay now fails the `update_manifest` run instead of committing nothing and looking deployed.
+
 ## [3.8.0] - 2026-09-18
 
 ### Changed

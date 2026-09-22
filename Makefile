@@ -1,4 +1,4 @@
-.PHONY: help install clean
+.PHONY: help install clean test
 
 VENV_DIR := .venv
 
@@ -7,6 +7,7 @@ help:
 		@echo "  make help       - Display this help message"
 		@echo "  make install    - Install lefthook"
 		@echo "  make clean      - Clean up the environment"
+		@echo "  make test       - Test scripts/update-manifest.sh (needs jq, yq v4)"
 
 install: $(VENV_DIR)/bin/activate
 		$(VENV_DIR)/bin/uv pip install lefthook
@@ -42,3 +43,6 @@ run:
 $(VENV_DIR)/bin/activate: 
 		python3 -m venv $(VENV_DIR)
 		$(VENV_DIR)/bin/pip install uv
+
+test:
+		sh scripts/test-update-manifest.sh
