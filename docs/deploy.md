@@ -260,8 +260,14 @@ receives the version as `helm_chart_version`. In use:
       submodules: recursive
 ```
 
-No EPFL-ENAC repository uses either today; if yours is the first, add it
-here.
+In use: `lfs: true` in
+[hobel-iaqdb](https://github.com/EPFL-ENAC/hobel-iaqdb/blob/dev/.github/workflows/deploy.yml)
+(the LFS-tracked files are in the image). `submodules: true` was used by
+tech4dev-hosm until it
+[replaced its submodule with a released tarball](https://github.com/EPFL-ENAC/tech4dev-hosm/commit/67b35a7f1561d52cdeadb66f51bb38d39f7b941b)
+(2026-05-05); its parent commit shows the setup. LFS-tracked files that do
+not go into the image (data, figures) need no `lfs: true`; ten repos in the
+org are in that case.
 
 ## How it works
 
