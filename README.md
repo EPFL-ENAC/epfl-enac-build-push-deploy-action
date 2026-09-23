@@ -9,6 +9,18 @@ This action implements ENAC-IT's Continuous Deployment for your app on a given e
 
 Upgrading from 3.1.0 or earlier: see [docs/migrating-from-3.1.md](docs/migrating-from-3.1.md).
 
+## Documentation map
+
+| Read this | When |
+| --- | --- |
+| this README | you deploy from GitHub Actions: inputs, secrets, multi-registry, chart, reuse |
+| [Deploying from GitLab](https://github.com/EPFL-ENAC/enack8s-app-config/blob/main/docs/gitlab-ci.md) | you want to know how the GitHub and GitLab deploy paths fit together, the runners, the credentials, the trust rules |
+| [Migrate a deploy from GitHub Actions to GitLab](https://gitlab.epfl.ch/EPFL-ENAC/build-push-deploy/-/blob/main/docs/migrate-from-github.md) | you move one branch of your app to gitlab.epfl.ch: before/after, what changes, the steps |
+| [build-push-deploy component](https://gitlab.epfl.ch/EPFL-ENAC/build-push-deploy) | the GitLab CI port of this action, its inputs, and what it still lacks ([tracking issue](https://gitlab.epfl.ch/EPFL-ENAC/build-push-deploy/-/work_items/1)) |
+| [mirror-to-gitlab](#mirroring-a-branch-to-gitlab) | GitLab deploys a branch, so GitHub must push it there after every merge |
+| [`scripts/update-manifest.sh`](scripts/update-manifest.sh) | the one writer of the Argo overlays, run by both paths |
+| [enack8s-app-config README](https://github.com/EPFL-ENAC/enack8s-app-config#readme) | onboarding an app on the cluster, overlays, secrets |
+
 ## Architecture
 
 ```
@@ -57,7 +69,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.9.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.10.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -73,7 +85,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.9.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.10.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -120,7 +132,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.9.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.10.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -145,7 +157,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.9.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.10.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
       registry_token: ${{ secrets.CUSTOM_REGISTRY_TOKEN }}
@@ -204,7 +216,7 @@ ssh-keygen -t ed25519 -C "github-actions@github.com"
 ```yml
 jobs:
   deploy:
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.9.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.10.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
       private_key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -254,7 +266,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.9.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.10.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -339,6 +351,40 @@ Set `helm_chart_path` and the workflow packages and pushes the chart itself, in 
 ```
 
 Each line of `helm_chart_render_args` is one render; all must succeed before the chart is pushed. The version (`1.0.<run_number>` with a `-dev`/`-rc` suffix by branch) is forwarded to the manifest repos as `helm_chart_version`.
+
+## Mirroring a branch to GitLab
+
+GitLab CE cannot pull from GitHub, and a push nobody remembers is a silent
+non-deploy. `mirror-to-gitlab.yml` pushes the branch after every change:
+
+```yaml
+name: mirror-to-gitlab
+"on":
+  push:
+    branches: [dev]
+permissions:
+  contents: read
+jobs:
+  mirror:
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/mirror-to-gitlab.yml@v3.10.0
+    with:
+      gitlab_repo: EPFL-ENAC/my-app
+    secrets:
+      deploy_key: ${{ secrets.GITLAB_DEPLOY_KEY }}
+```
+
+Setup, once per app:
+
+1. `ssh-keygen -t ed25519 -N '' -f gitlab-mirror` on your machine.
+2. GitLab project → Settings → Repository → Deploy keys: add `gitlab-mirror.pub` with **Grant write permissions**.
+3. Same page, Protected branches: allow that deploy key to push to the branch you mirror. A deploy key is scoped to that project and, through this, to that branch.
+4. GitHub repo → Settings → Secrets → Actions: `GITLAB_DEPLOY_KEY` = the private key. Delete the local file.
+
+The workflow pins gitlab.epfl.ch's SSH host key (fingerprint
+`SHA256:/OhwCKIqMSKkZP0RgiQ5f0qS64EsnYL++6Y+Gbmx7tU`); compare it with
+<https://gitlab.epfl.ch/help/instance_configuration> before accepting a
+change to it. When GitHub Actions is down, push by hand:
+`git push git@gitlab-ssh.epfl.ch:EPFL-ENAC/my-app.git origin/dev:dev`.
 
 ## Scheduled registry vulnerability scan
 

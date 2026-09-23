@@ -5,6 +5,13 @@ All notable changes to EPFL ENAC-IT Continuous Deployment Action will be documen
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.0] - 2026-09-23
+
+### Added
+
+- `mirror-to-gitlab.yml`, a reusable workflow that pushes the calling branch to a GitLab project after every change, for apps whose branch deploys from gitlab.epfl.ch. Deploy key as a secret, host key pinned, `actions/checkout` pinned by commit.
+- A documentation map at the top of the README linking the GitLab-side docs.
+
 ## [3.9.0] - 2026-09-22
 
 ### Added

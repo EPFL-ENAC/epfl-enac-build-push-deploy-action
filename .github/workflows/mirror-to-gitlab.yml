@@ -1,0 +1,76 @@
+---
+name: mirror-to-gitlab
+
+# Push the calling repo's branch to a GitLab project, so GitLab CI can deploy
+# it (GitLab CE cannot pull from GitHub). Call it from a thin wrapper:
+#
+#   name: mirror-to-gitlab
+#   on:
+#     push:
+#       branches: [dev]
+#   permissions:
+#     contents: read
+#   jobs:
+#     mirror:
+#       uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/mirror-to-gitlab.yml@v3.10.0
+#       with:
+#         gitlab_repo: EPFL-ENAC/my-app
+#       secrets:
+#         deploy_key: ${{ secrets.GITLAB_DEPLOY_KEY }}
+#
+# Setup on the GitLab project: Settings > Repository > Deploy keys, add the
+# public key with "Grant write permissions"; then Protected branches, allow
+# that key to push to the mirrored branch. Outage fallback:
+#   git push git@gitlab-ssh.epfl.ch:EPFL-ENAC/my-app.git origin/dev:dev
+
+"on":
+  workflow_call:
+    inputs:
+      gitlab_repo:
+        required: true
+        type: string
+        description: GitLab project path, e.g. EPFL-ENAC/my-app
+      gitlab_ssh_host:
+        required: false
+        type: string
+        default: gitlab-ssh.epfl.ch
+      gitlab_host_key:
+        required: false
+        type: string
+        # gitlab.epfl.ch's ED25519 host key, SHA256:/OhwCKIqMSKkZP0RgiQ5f0qS64EsnYL++6Y+Gbmx7tU.
+        # Compare with https://gitlab.epfl.ch/help/instance_configuration before trusting a change.
+        default: gitlab-ssh.epfl.ch ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGAJUOtRCrsoMnO0yoU/qN0fQvR8m2XmaDUXNBqRTqbh
+      branch:
+        required: false
+        type: string
+        default: ${{ github.ref_name }}
+        description: Branch to push; defaults to the branch that triggered the caller
+    secrets:
+      deploy_key:
+        required: true
+        description: Private SSH key of a GitLab deploy key with write access
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.branch }}
+          # a shallow clone cannot be pushed
+          fetch-depth: 0
+      - name: Push ${{ inputs.branch }} to ${{ inputs.gitlab_repo }}
+        env:
+          DEPLOY_KEY: ${{ secrets.deploy_key }}
+          HOST_KEY: ${{ inputs.gitlab_host_key }}
+          REMOTE: git@${{ inputs.gitlab_ssh_host }}:${{ inputs.gitlab_repo }}.git
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          # pinned host key, no trust-on-first-use
+          printf '%s\n' "$HOST_KEY" >> ~/.ssh/known_hosts
+          git push "$REMOTE" "HEAD:refs/heads/$BRANCH"
