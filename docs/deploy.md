@@ -26,7 +26,7 @@ together.
 | `helm_chart_render_args` | | one smoke `helm template` per line, the line appended as arguments |
 | `helm_chart_name`, `helm_chart_version` | | chart coordinates sent to the Argo repos; `helm_chart_version` is ignored when `helm_chart_path` is set |
 | `create_pull_request` | `false` | on a tag, open a PR in the Argo repos instead of committing `prod` on `main` |
-| `lfs`, `submodules` | `false` | `git lfs pull` at checkout; `true` or `recursive` for submodules |
+| `lfs`, `submodules` | `false` | `git lfs pull` after checkout (see [LFS and submodules](#lfs-and-submodules)); `true` or `recursive` for submodules |
 
 Secrets:
 
@@ -35,6 +35,7 @@ Secrets:
 | `token` | required | dispatches to the Argo repos. `CD_TOKEN` is an org secret for EPFL-ENAC repositories; other orgs get it from ENAC-IT with the hosting agreement |
 | `private_key` | | SSH key passed as the `SSH_PRIVATE_KEY` build arg. See [Private dependencies](#private-dependencies) |
 | `registry_token`, `registry_token_2` | | credentials of the first and second non-ghcr registry |
+| `lfs_username`, `lfs_password` | | basic auth for the LFS server named in `.lfsconfig` (e.g. ENAC-IT's). See [LFS and submodules](#lfs-and-submodules) |
 
 What a push deploys: `dev`, `test` and `stage` update the overlay of the
 same name; a tag `v1.2.3` updates `prod`; any other branch builds and pushes
@@ -259,6 +260,25 @@ receives the version as `helm_chart_version`. In use:
       lfs: true
       submodules: recursive
 ```
+
+The files are pulled after checkout, from the server in `.lfsconfig` if there
+is one, else from GitHub's LFS store. A self-hosted server needs credentials:
+ENAC-IT's [Git LFS server](https://github.com/EPFL-ENAC/wiki/blob/main/Wiki/Git%20LFS%20server%20%40ENAC-IT.md)
+only lets GitHub runners in with its full-access token (`AUTH_USERNAME` /
+`AUTH_PASSWORD`, Infisical `epfl-enac/git-lfs`):
+
+```yml
+    secrets:
+      token: ${{ secrets.CD_TOKEN }}
+      lfs_username: ${{ secrets.ENAC_LFS_USERNAME }}
+      lfs_password: ${{ secrets.ENAC_LFS_PASSWORD }}
+    with:
+      lfs: true
+```
+
+Without them the job stops with an error naming the server, instead of
+GitHub's 404 "Object does not exist on the server". LFS files inside
+submodules are not pulled.
 
 In use: `lfs: true` in
 [hobel-iaqdb](https://github.com/EPFL-ENAC/hobel-iaqdb/blob/dev/.github/workflows/deploy.yml)

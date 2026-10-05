@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Self-hosted Git LFS servers** (`lfs: true` with a `.lfsconfig` URL, e.g. ENAC-IT's): LFS files are now pulled after checkout, so `.lfsconfig` is read, with the new optional `lfs_username` / `lfs_password` secrets. Before, `actions/checkout` fetched LFS before the working tree existed and always asked GitHub's LFS store (404 for objects kept elsewhere). Repositories on GitHub's LFS store need no change.
+
 ### Changed
 
 - README rewritten as an entry point: the three workflows, a quick start, the documentation map, compatibility. The reference material moved unchanged to `docs/deploy.md`, `docs/update-manifest.md` (payload, receiver behaviour, compatibility guarantees), `docs/mirror-to-gitlab.md` and `docs/registry-scan.md`.
