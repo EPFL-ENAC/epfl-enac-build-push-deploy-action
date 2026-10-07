@@ -26,7 +26,7 @@ together.
 | `helm_chart_render_args` | | one smoke `helm template` per line, the line appended as arguments |
 | `helm_chart_name`, `helm_chart_version` | | chart coordinates sent to the Argo repos; `helm_chart_version` is ignored when `helm_chart_path` is set |
 | `create_pull_request` | `false` | on a tag, open a PR in the Argo repos instead of committing `prod` on `main` |
-| `lfs`, `submodules` | `false` | `git lfs pull` after checkout (see [LFS and submodules](#lfs-and-submodules)); `true` or `recursive` for submodules |
+| `lfs`, `submodules` | `false` | `git lfs pull` after checkout, from GitHub's LFS store or the server in `.lfsconfig` (see [LFS and submodules](#lfs-and-submodules)); `true` or `recursive` for submodules |
 
 Secrets:
 
@@ -261,11 +261,17 @@ receives the version as `helm_chart_version`. In use:
       submodules: recursive
 ```
 
-The files are pulled after checkout, from the server in `.lfsconfig` if there
-is one, else from GitHub's LFS store. A self-hosted server needs credentials:
-ENAC-IT's [Git LFS server](https://github.com/EPFL-ENAC/wiki/blob/main/Wiki/Git%20LFS%20server%20%40ENAC-IT.md)
-only lets GitHub runners in with its full-access token (`AUTH_USERNAME` /
-`AUTH_PASSWORD`, Infisical `epfl-enac/git-lfs`):
+`lfs: true` runs `git lfs pull` **after** checkout. Where the files come from
+depends on the repository's `.lfsconfig`:
+
+| `.lfsconfig` | LFS store | Secrets |
+| --- | --- | --- |
+| none | **GitHub's** LFS store (`github.com/<repo>.git/info/lfs`) | none: checkout's token |
+| `url = "https://enac-it-git-lfs.epfl.ch/api/<org>/<repo>"` | **ENAC-IT's** [Git LFS server](https://github.com/EPFL-ENAC/wiki/blob/main/Wiki/Git%20LFS%20server%20%40ENAC-IT.md) | `lfs_username`, `lfs_password` |
+
+ENAC-IT's server lets GitHub runners in only with its full-access token
+(`AUTH_USERNAME` / `AUTH_PASSWORD`, Infisical `epfl-enac/git-lfs`), which the
+EPFL-ENAC org holds as secrets:
 
 ```yml
     secrets:
@@ -276,18 +282,28 @@ only lets GitHub runners in with its full-access token (`AUTH_USERNAME` /
       lfs: true
 ```
 
-Without them the job stops with an error naming the server, instead of
-GitHub's 404 "Object does not exist on the server". LFS files inside
-submodules are not pulled.
+Without them the job stops with an error naming the server.
 
-In use: `lfs: true` in
-[hobel-iaqdb](https://github.com/EPFL-ENAC/hobel-iaqdb/blob/dev/.github/workflows/deploy.yml)
-(the LFS-tracked files are in the image). `submodules: true` was used by
+> **Before this version**, `lfs: true` was `actions/checkout`'s own option. It
+> fetches LFS before the working tree exists, so it never reads `.lfsconfig`
+> and **always asked GitHub's store**: repositories on ENAC-IT's server failed
+> with 404 "Object does not exist on the server".
+
+In use:
+
+- GitHub's store, files in the image:
+  [hobel-iaqdb](https://github.com/EPFL-ENAC/hobel-iaqdb/blob/dev/.github/workflows/deploy.yml).
+- ENAC-IT's server, files in the image:
+  [eesd-modern-masonry-walls-db](https://github.com/EPFL-ENAC/eesd-modern-masonry-walls-db/blob/dev/.github/workflows/deploy.yml)
+  (specimen photos).
+- ENAC-IT's server, files **not** in the image, so no `lfs: true`:
+  eesd-mmsdb (its deploy sets `GIT_LFS_SKIP_SMUDGE: 1`; the backend reads
+  the server at runtime), bluecity-viz, sxl-recrete-atlas (images on S3).
+
+LFS files inside submodules are not pulled. `submodules: true` was used by
 tech4dev-hosm until it
 [replaced its submodule with a released tarball](https://github.com/EPFL-ENAC/tech4dev-hosm/commit/67b35a7f1561d52cdeadb66f51bb38d39f7b941b)
-(2026-05-05); its parent commit shows the setup. LFS-tracked files that do
-not go into the image (data, figures) need no `lfs: true`; ten repos in the
-org are in that case.
+(2026-05-05); its parent commit shows the setup.
 
 ## How it works
 
