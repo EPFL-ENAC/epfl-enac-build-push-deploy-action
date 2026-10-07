@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   scan:
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/registry-scan.yml@v3.10.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/registry-scan.yml@v3.11.0
     with:
       # ghcr image paths without the ghcr.io/ prefix
       images: '["epfl-enac/epfl/my-app/frontend","epfl-enac/epfl/my-app/backend"]'

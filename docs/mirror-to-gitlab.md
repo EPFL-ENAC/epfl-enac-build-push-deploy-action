@@ -12,7 +12,7 @@ permissions:
   contents: read
 jobs:
   mirror:
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/mirror-to-gitlab.yml@v3.10.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/mirror-to-gitlab.yml@v3.11.0
     with:
       gitlab_repo: EPFL-ENAC/my-app
     secrets:

@@ -32,7 +32,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.10.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.11.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -65,7 +65,7 @@ reuse, a Helm chart: [docs/deploy.md](docs/deploy.md).
 
 ## Versions and compatibility
 
-Pin a tag (`@v3.10.0`); see [CHANGELOG.md](CHANGELOG.md). Minor versions
+Pin a tag (`@v3.11.0`); see [CHANGELOG.md](CHANGELOG.md). Minor versions
 add inputs and never change what an existing call does. The manifest
 payload is stable since v3.0, and the Argo repos accept every past form of
 it: see [Compatibility](docs/update-manifest.md#compatibility). Upgrading
