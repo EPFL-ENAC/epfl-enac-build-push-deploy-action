@@ -387,6 +387,9 @@ jobs:
             echo "::add-mask::$auth"
             # "Basic" capitalised: ENAC-IT's LFS proxy rejects checkout's lowercase "basic".
             git config --local "http.$host/.extraheader" "Authorization: Basic $auth"
+            # One download at a time: parallel streams (git-lfs default 8) get cut
+            # mid-file by ENAC-IT's server ("LFS: unexpected EOF").
+            git config --local lfs.concurrenttransfers 1
           fi
           git lfs pull
 

@@ -282,7 +282,9 @@ EPFL-ENAC org holds as secrets:
       lfs: true
 ```
 
-Without them the job stops with an error naming the server.
+Without them the job stops with an error naming the server. Files from a
+self-hosted server download one at a time: ENAC-IT's server cuts parallel
+downloads short ("LFS: unexpected EOF").
 
 > **Before this version**, `lfs: true` was `actions/checkout`'s own option. It
 > fetches LFS before the working tree exists, so it never reads `.lfsconfig`
