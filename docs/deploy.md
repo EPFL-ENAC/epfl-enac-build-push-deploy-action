@@ -283,10 +283,16 @@ EPFL-ENAC org holds as secrets:
 ```
 
 Without them the job stops with an error naming the server. git-lfs talks
-HTTP/1.1 to a self-hosted server: through ENAC-IT's load balancer, HTTP/2 by
-default, its Go HTTP/2 client gets parallel downloads cut mid-file
-("LFS: unexpected EOF"; 4 of 24 files in 71 s against 24 of 24 in 5 s over
-HTTP/1.1).
+HTTP/1.1 to a self-hosted server. ENAC-IT's load balancer, HTTP/2 by default,
+closes an HTTP/2 connection after about 1,000 frames from the client. git-lfs's
+Go client sends a flow-control frame every ~4 KB, so over HTTP/2 its downloads
+break after a few MB with "LFS: unexpected EOF"
+([enack8s-core-config#23](https://github.com/EPFL-ENAC/enack8s-core-config/issues/23)).
+On your own machine, set it once:
+
+```bash
+git config --global http.https://enac-it-git-lfs.epfl.ch/.version HTTP/1.1
+```
 
 > **Before this version**, `lfs: true` was `actions/checkout`'s own option. It
 > fetches LFS before the working tree exists, so it never reads `.lfsconfig`

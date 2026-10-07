@@ -387,9 +387,10 @@ jobs:
             echo "::add-mask::$auth"
             # "Basic" capitalised: ENAC-IT's LFS proxy rejects checkout's lowercase "basic".
             git config --local "http.$host/.extraheader" "Authorization: Basic $auth"
-            # HTTP/1.1: through ENAC-IT's load balancer (HTTP/2 by default), git-lfs's
-            # Go HTTP/2 client gets parallel downloads cut mid-file ("LFS: unexpected
-            # EOF"); over HTTP/1.1 its 8 parallel downloads come through intact.
+            # HTTP/1.1: ENAC-IT's load balancer (HTTP/2 by default) closes an HTTP/2
+            # connection after ~1,000 client frames, and git-lfs's Go client sends a
+            # WINDOW_UPDATE every ~4 KB ("LFS: unexpected EOF" after a few MB).
+            # EPFL-ENAC/enack8s-core-config#23
             export GODEBUG=http2client=0
           fi
           git lfs pull
