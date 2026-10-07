@@ -270,8 +270,8 @@ only lets GitHub runners in with its full-access token (`AUTH_USERNAME` /
 ```yml
     secrets:
       token: ${{ secrets.CD_TOKEN }}
-      lfs_username: ${{ secrets.ENAC_LFS_USERNAME }}
-      lfs_password: ${{ secrets.ENAC_LFS_PASSWORD }}
+      lfs_username: ${{ secrets.GIT_LFS_AUTH_USERNAME }}
+      lfs_password: ${{ secrets.GIT_LFS_AUTH_PASSWORD }}
     with:
       lfs: true
 ```
