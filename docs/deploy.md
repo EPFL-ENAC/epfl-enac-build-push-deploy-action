@@ -26,7 +26,7 @@ together.
 | `helm_chart_render_args` | | one smoke `helm template` per line, the line appended as arguments |
 | `helm_chart_name`, `helm_chart_version` | | chart coordinates sent to the Argo repos; `helm_chart_version` is ignored when `helm_chart_path` is set |
 | `create_pull_request` | `false` | on a tag, open a PR in the Argo repos instead of committing `prod` on `main` |
-| `lfs`, `submodules` | `false` | `git lfs pull` at checkout; `true` or `recursive` for submodules |
+| `lfs`, `submodules` | `false` | `git lfs pull` after checkout, from GitHub's LFS store or the server in `.lfsconfig` (see [LFS and submodules](#lfs-and-submodules)); `true` or `recursive` for submodules |
 
 Secrets:
 
@@ -35,6 +35,7 @@ Secrets:
 | `token` | required | dispatches to the Argo repos. `CD_TOKEN` is an org secret for EPFL-ENAC repositories; other orgs get it from ENAC-IT with the hosting agreement |
 | `private_key` | | SSH key passed as the `SSH_PRIVATE_KEY` build arg. See [Private dependencies](#private-dependencies) |
 | `registry_token`, `registry_token_2` | | credentials of the first and second non-ghcr registry |
+| `lfs_username`, `lfs_password` | | basic auth for the LFS server named in `.lfsconfig` (e.g. ENAC-IT's). See [LFS and submodules](#lfs-and-submodules) |
 
 What a push deploys: `dev`, `test` and `stage` update the overlay of the
 same name; a tag `v1.2.3` updates `prod`; any other branch builds and pushes
@@ -260,14 +261,70 @@ receives the version as `helm_chart_version`. In use:
       submodules: recursive
 ```
 
-In use: `lfs: true` in
-[hobel-iaqdb](https://github.com/EPFL-ENAC/hobel-iaqdb/blob/dev/.github/workflows/deploy.yml)
-(the LFS-tracked files are in the image). `submodules: true` was used by
+`lfs: true` runs `git lfs pull` **after** checkout. Where the files come from
+depends on the repository's `.lfsconfig`:
+
+| `.lfsconfig` | LFS store | Secrets |
+| --- | --- | --- |
+| none | **GitHub's** LFS store (`github.com/<repo>.git/info/lfs`) | none: checkout's token |
+| `url = "https://enac-it-git-lfs.epfl.ch/api/<org>/<repo>"` | **ENAC-IT's** [Git LFS server](https://github.com/EPFL-ENAC/wiki/blob/main/Wiki/Git%20LFS%20server%20%40ENAC-IT.md) | `lfs_username`, `lfs_password` |
+
+ENAC-IT's server lets GitHub runners in only with its full-access token
+(`AUTH_USERNAME` / `AUTH_PASSWORD`, Infisical `epfl-enac/git-lfs`), which the
+EPFL-ENAC org holds as secrets:
+
+```yml
+    secrets:
+      token: ${{ secrets.CD_TOKEN }}
+      lfs_username: ${{ secrets.GIT_LFS_AUTH_USERNAME }}
+      lfs_password: ${{ secrets.GIT_LFS_AUTH_PASSWORD }}
+    with:
+      lfs: true
+```
+
+Without them the job stops with an error naming the server. git-lfs talks
+HTTP/1.1 to a self-hosted server: through ENAC-IT's load balancer, HTTP/2 by
+default, its Go HTTP/2 client gets parallel downloads cut mid-file
+("LFS: unexpected EOF"; 4 of 24 files in 71 s against 24 of 24 in 5 s over
+HTTP/1.1).
+
+> **Before this version**, `lfs: true` was `actions/checkout`'s own option. It
+> fetches LFS before the working tree exists, so it never reads `.lfsconfig`
+> and **always asked GitHub's store**: repositories on ENAC-IT's server failed
+> with 404 "Object does not exist on the server".
+
+#### No standard way to serve LFS files (yet)
+
+Repositories that keep files in LFS ship them in very different ways. Until
+we settle on one, this is the range in use, from build time to by hand:
+
+| How the files reach users | Example | LFS store | How |
+| --- | --- | --- | --- |
+| **In the image**, pulled at build | [hobel-iaqdb](https://github.com/EPFL-ENAC/hobel-iaqdb) | GitHub's | `lfs: true`, no `.lfsconfig` |
+| **In the image**, pulled at build | [eesd-modern-masonry-walls-db](https://github.com/EPFL-ENAC/eesd-modern-masonry-walls-db) (specimen photos, served by nginx) | ENAC-IT's | `lfs: true` + `lfs_username` / `lfs_password` |
+| **At runtime**, by the app | [eesd-mmsdb](https://github.com/EPFL-ENAC/eesd-mmsdb) | ENAC-IT's | the deploy skips LFS (`GIT_LFS_SKIP_SMUDGE: 1`); the backend downloads objects with `LFS_USERNAME` / `LFS_PASSWORD` (`backend/api/config.py`) |
+| **On S3**, uploaded by hand | [sxl-recrete-atlas](https://github.com/EPFL-ENAC/sxl-recrete-atlas) | ENAC-IT's | `make cdn` pushes `public/images` (with WebP versions) to an `s3.epfl.ch` bucket with `s3cmd`; the image carries none |
+| **Not served**: LFS holds inputs only | [bluecity-viz](https://github.com/EPFL-ENAC/bluecity-viz) (processing data; the data it ships are plain git files), backup-gbdi (an archive, no CI) | ENAC-IT's | no `lfs` |
+
+Each has its trade-off: image size and build-time download (in the image),
+credentials in the running app (runtime), a manual step that can drift
+from the repository (S3).
+
+In use:
+
+- GitHub's store, files in the image:
+  [hobel-iaqdb](https://github.com/EPFL-ENAC/hobel-iaqdb/blob/dev/.github/workflows/deploy.yml).
+- ENAC-IT's server, files in the image:
+  [eesd-modern-masonry-walls-db](https://github.com/EPFL-ENAC/eesd-modern-masonry-walls-db/blob/dev/.github/workflows/deploy.yml)
+  (specimen photos).
+- ENAC-IT's server, files **not** in the image, so no `lfs: true`:
+  eesd-mmsdb (its deploy sets `GIT_LFS_SKIP_SMUDGE: 1`; the backend reads
+  the server at runtime), bluecity-viz, sxl-recrete-atlas (images on S3).
+
+LFS files inside submodules are not pulled. `submodules: true` was used by
 tech4dev-hosm until it
 [replaced its submodule with a released tarball](https://github.com/EPFL-ENAC/tech4dev-hosm/commit/67b35a7f1561d52cdeadb66f51bb38d39f7b941b)
-(2026-05-05); its parent commit shows the setup. LFS-tracked files that do
-not go into the image (data, figures) need no `lfs: true`; ten repos in the
-org are in that case.
+(2026-05-05); its parent commit shows the setup.
 
 ## How it works
 

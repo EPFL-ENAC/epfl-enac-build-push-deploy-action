@@ -16,7 +16,8 @@ on:
         required: true
         type: string
       lfs:
-        # perform git lfs pull at checkout time
+        # `git lfs pull` after checkout, from GitHub's LFS store or from the server
+        # named in .lfsconfig (then pass the lfs_username / lfs_password secrets)
         required: false
         type: boolean
         default: false
@@ -144,6 +145,12 @@ on:
       registry_token:
         required: false
       registry_token_2:
+        required: false
+      lfs_username:
+        # basic auth for a self-hosted LFS server set in .lfsconfig, e.g.
+        # enac-it-git-lfs.epfl.ch (its full-access AUTH_USERNAME / AUTH_PASSWORD)
+        required: false
+      lfs_password:
         required: false
 
 env:
@@ -358,8 +365,34 @@ jobs:
         if: ${{ !matrix.reuse }}
         uses: actions/checkout@v7
         with:
-          lfs: ${{ inputs.lfs }}
           submodules: ${{ inputs.submodules }}
+
+      # Not checkout's own `lfs`: it fetches before the working tree exists, so it
+      # never reads .lfsconfig and only reaches GitHub's LFS store.
+      - name: Pull Git LFS files
+        if: ${{ !matrix.reuse && inputs.lfs }}
+        env:
+          LFS_USERNAME: ${{ secrets.lfs_username }}
+          LFS_PASSWORD: ${{ secrets.lfs_password }}
+        run: |
+          git lfs install --local
+          url=$(git config --file .lfsconfig --get lfs.url || true)
+          if [ -n "$url" ]; then
+            if [ -z "$LFS_USERNAME" ] || [ -z "$LFS_PASSWORD" ]; then
+              echo "::error::.lfsconfig points to $url: pass the lfs_username and lfs_password secrets"
+              exit 1
+            fi
+            host=$(printf '%s' "$url" | sed -E 's#^(https?://[^/]+).*#\1#')
+            auth=$(printf '%s:%s' "$LFS_USERNAME" "$LFS_PASSWORD" | base64 -w0)
+            echo "::add-mask::$auth"
+            # "Basic" capitalised: ENAC-IT's LFS proxy rejects checkout's lowercase "basic".
+            git config --local "http.$host/.extraheader" "Authorization: Basic $auth"
+            # HTTP/1.1: through ENAC-IT's load balancer (HTTP/2 by default), git-lfs's
+            # Go HTTP/2 client gets parallel downloads cut mid-file ("LFS: unexpected
+            # EOF"); over HTTP/1.1 its 8 parallel downloads come through intact.
+            export GODEBUG=http2client=0
+          fi
+          git lfs pull
 
       - name: Set up Docker Buildx
         if: ${{ !matrix.reuse }}
