@@ -282,14 +282,33 @@ EPFL-ENAC org holds as secrets:
       lfs: true
 ```
 
-Without them the job stops with an error naming the server. Files from a
-self-hosted server download one at a time: ENAC-IT's server cuts parallel
-downloads short ("LFS: unexpected EOF").
+Without them the job stops with an error naming the server. git-lfs talks
+HTTP/1.1 to a self-hosted server: through ENAC-IT's load balancer, HTTP/2 by
+default, its Go HTTP/2 client gets parallel downloads cut mid-file
+("LFS: unexpected EOF"; 4 of 24 files in 71 s against 24 of 24 in 5 s over
+HTTP/1.1).
 
 > **Before this version**, `lfs: true` was `actions/checkout`'s own option. It
 > fetches LFS before the working tree exists, so it never reads `.lfsconfig`
 > and **always asked GitHub's store**: repositories on ENAC-IT's server failed
 > with 404 "Object does not exist on the server".
+
+#### No standard way to serve LFS files (yet)
+
+Repositories that keep files in LFS ship them in very different ways. Until
+we settle on one, this is the range in use, from build time to by hand:
+
+| How the files reach users | Example | LFS store | How |
+| --- | --- | --- | --- |
+| **In the image**, pulled at build | [hobel-iaqdb](https://github.com/EPFL-ENAC/hobel-iaqdb) | GitHub's | `lfs: true`, no `.lfsconfig` |
+| **In the image**, pulled at build | [eesd-modern-masonry-walls-db](https://github.com/EPFL-ENAC/eesd-modern-masonry-walls-db) (specimen photos, served by nginx) | ENAC-IT's | `lfs: true` + `lfs_username` / `lfs_password` |
+| **At runtime**, by the app | [eesd-mmsdb](https://github.com/EPFL-ENAC/eesd-mmsdb) | ENAC-IT's | the deploy skips LFS (`GIT_LFS_SKIP_SMUDGE: 1`); the backend downloads objects with `LFS_USERNAME` / `LFS_PASSWORD` (`backend/api/config.py`) |
+| **On S3**, uploaded by hand | [sxl-recrete-atlas](https://github.com/EPFL-ENAC/sxl-recrete-atlas) | ENAC-IT's | `make cdn` pushes `public/images` (with WebP versions) to an `s3.epfl.ch` bucket with `s3cmd`; the image carries none |
+| **Not served**: LFS holds inputs only | [bluecity-viz](https://github.com/EPFL-ENAC/bluecity-viz) (processing data; the data it ships are plain git files), backup-gbdi (an archive, no CI) | ENAC-IT's | no `lfs` |
+
+Each has its trade-off: image size and build-time download (in the image),
+credentials in the running app (runtime), a manual step that can drift
+from the repository (S3).
 
 In use:
 
