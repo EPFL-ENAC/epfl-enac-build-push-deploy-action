@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Self-hosted Git LFS servers** (`lfs: true` with a `.lfsconfig` URL, e.g. ENAC-IT's): LFS files are now pulled after checkout, so `.lfsconfig` is read, with the new optional `lfs_username` / `lfs_password` secrets. Before, `actions/checkout` fetched LFS before the working tree existed and always asked GitHub's LFS store (404 for objects kept elsewhere). Repositories on GitHub's LFS store need no change.
+- **Self-hosted Git LFS servers** (`lfs: true` with a `.lfsconfig` URL, e.g. ENAC-IT's): LFS files are now pulled after checkout, so `.lfsconfig` is read, with the new optional `lfs_username` / `lfs_password` secrets. Before, `actions/checkout` fetched LFS before the working tree existed and always asked GitHub's LFS store (404 for objects kept elsewhere). Files from a self-hosted server download one at a time, with the auth scheme sent as `Basic` (ENAC-IT's server cuts parallel downloads and rejects lowercase `basic`). Repositories on GitHub's LFS store need no change.
 
 ### Changed
 
