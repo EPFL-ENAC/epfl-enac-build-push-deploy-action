@@ -32,7 +32,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v3.11.0
+    uses: EPFL-ENAC/epfl-enac-build-push-deploy-action/.github/workflows/deploy.yml@v4.0.0
     secrets:
       token: ${{ secrets.CD_TOKEN }}
     with:
@@ -65,8 +65,13 @@ reuse, a Helm chart: [docs/deploy.md](docs/deploy.md).
 
 ## Versions and compatibility
 
-Pin a tag (`@v3.11.0`); see [CHANGELOG.md](CHANGELOG.md). Minor versions
+Pin a tag (`@v4.0.0`); see [CHANGELOG.md](CHANGELOG.md). Minor versions
 add inputs and never change what an existing call does. The manifest
 payload is stable since v3.0, and the Argo repos accept every past form of
 it: see [Compatibility](docs/update-manifest.md#compatibility). Upgrading
 from 3.1.0 or earlier: [docs/migrating-from-3.1.md](docs/migrating-from-3.1.md).
+
+v4.0.0 changes only `registry-scan.yml`: findings become code scanning
+alerts, and its callers replace `issues: write` with
+`security-events: write` and `actions: read`. Callers of `deploy.yml`
+and `mirror-to-gitlab.yml` bump the tag with no other change.
