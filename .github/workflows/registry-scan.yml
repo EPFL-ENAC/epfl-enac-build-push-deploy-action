@@ -132,6 +132,7 @@ jobs:
         env:
           IMAGE: ${{ matrix.target.image }}
           TAG: ${{ matrix.target.tag }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           # No --exit-code: findings must not fail the job, the alerts are
           # the signal.
@@ -141,6 +142,12 @@ jobs:
             --format sarif \
             --output trivy.sarif \
             "ghcr.io/$IMAGE:$TAG"
+          # The alert page shows only the tool name ("Trivy") and the result
+          # message: name the workflow, the image digest and the run there.
+          jq '.runs[] |= (.properties as $p | .results[]?.message.text +=
+            "\n\nFound by the scheduled registry scan (EPFL-ENAC/epfl-enac-build-push-deploy-action, registry-scan.yml)\nImage: \($p.imageName)\nDigest: \($p.repoDigests[0] // "unknown")\nRun: \(env.RUN_URL)")' \
+            trivy.sarif > tagged.sarif
+          mv tagged.sarif trivy.sarif
 
       - name: Upload SARIF to code scanning
         uses: github/codeql-action/upload-sarif@v4
