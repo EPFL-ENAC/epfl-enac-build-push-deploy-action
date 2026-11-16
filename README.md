@@ -10,7 +10,7 @@ digests. Works for EPFL-ENAC repositories and for other organizations'.
 | Workflow | Use it when | Docs |
 | --- | --- | --- |
 | **`deploy.yml`** | every push to `dev`, `test`, `stage` or a `v*` tag should deploy that environment | [reference](docs/deploy.md) |
-| **`registry-scan.yml`** | you want a weekly Trivy scan of the images already deployed, with an issue per finding | [setup](docs/registry-scan.md) |
+| **`registry-scan.yml`** | you want a weekly Trivy scan of the images already deployed, with code scanning alerts per finding | [setup](docs/registry-scan.md) |
 | **`mirror-to-gitlab.yml`** | a branch deploys from gitlab.epfl.ch and GitHub must push it there after every merge | [setup](docs/mirror-to-gitlab.md) |
 
 ## Quick start

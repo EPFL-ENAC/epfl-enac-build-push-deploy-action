@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking**: `registry-scan.yml` reports findings as code scanning alerts, not issues. It uploads Trivy SARIF per image and slot (`release`, `dev`, `stage`), and GitHub closes an alert when a later scan no longer reports it. Callers must replace `issues: write` with `security-events: write` and `actions: read`. Private repositories need GitHub Code Security. Issues opened by the old version stay open: close them by hand.
+
 ## [3.11.0] - 2026-10-07
 
 ### Added
