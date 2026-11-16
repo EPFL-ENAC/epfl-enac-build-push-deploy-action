@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Breaking**: `registry-scan.yml` reports findings as code scanning alerts, not issues. It uploads Trivy SARIF per image and slot (`release`, `dev`, `stage`), and GitHub closes an alert when a later scan no longer reports it. Callers must replace `issues: write` with `security-events: write` and `actions: read`. Private repositories need GitHub Code Security. Issues opened by the old version stay open: close them by hand.
-- `registry-scan.yml` hardening: Trivy runs outside the caller checkout (a caller `.trivyignore` cannot close an alert), scans vulnerabilities only, picks the newest final `vX.Y.Z` tag as the release (not `-rc` tags), and fails on a malformed `images` input.
+- `registry-scan.yml` hardening: Trivy runs outside the caller checkout (a caller `.trivyignore` cannot close an alert), scans vulnerabilities only, picks the newest final `vX.Y.Z` tag as the release (not `-rc` tags), and fails on a malformed `images` input. It installs Trivy from the same checksummed tarball as `deploy.yml`.
 - `registry-scan.yml` alerts are traceable: each message names the workflow ref and commit, the Trivy version and DB date, the scanned image digest, and the run.
 
 ## [3.11.0] - 2026-10-07
