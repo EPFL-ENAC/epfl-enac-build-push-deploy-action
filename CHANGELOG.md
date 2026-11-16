@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-11-16
+
+### Changed
+
+- Trivy 0.72.0 to 0.76.2 in `deploy.yml` and `registry-scan.yml` (same checksummed tarball install). 0.72.0 warned "This OS version is not on the EOL list" on every Alpine 3.24 image; 0.76.2 knows 3.24. Findings and the SARIF run properties are unchanged. No caller change.
+
 ## [4.0.0] - 2026-11-16
 
 ### Changed
