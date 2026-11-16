@@ -133,7 +133,18 @@ jobs:
           IMAGE: ${{ matrix.target.image }}
           TAG: ${{ matrix.target.tag }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # job.workflow_ref/_sha, not github.*: in a called workflow
+          # github.workflow_ref names the caller, job.* names this file.
+          # Passed as JSON because actionlint does not know these fields yet.
+          JOB_CONTEXT: ${{ toJSON(job) }}
         run: |
+          WORKFLOW_REF=$(jq -r '.workflow_ref // empty' <<< "$JOB_CONTEXT")
+          WORKFLOW_SHA=$(jq -r '.workflow_sha // empty' <<< "$JOB_CONTEXT")
+          if [ -z "$WORKFLOW_REF" ] || [ -z "$WORKFLOW_SHA" ]; then
+            echo "::error::job.workflow_ref/workflow_sha missing: alerts would not say which workflow found them"
+            exit 1
+          fi
+          export WORKFLOW_REF WORKFLOW_SHA
           # No --exit-code: findings must not fail the job, the alerts are
           # the signal.
           trivy image \
@@ -143,9 +154,11 @@ jobs:
             --output trivy.sarif \
             "ghcr.io/$IMAGE:$TAG"
           # The alert page shows only the tool name ("Trivy") and the result
-          # message: name the workflow, the image digest and the run there.
-          jq '.runs[] |= (.properties as $p | .results[]?.message.text +=
-            "\n\nFound by the scheduled registry scan (EPFL-ENAC/epfl-enac-build-push-deploy-action, registry-scan.yml)\nImage: \($p.imageName)\nDigest: \($p.repoDigests[0] // "unknown")\nRun: \(env.RUN_URL)")' \
+          # message. Trace every alert there: which workflow at which commit,
+          # which Trivy and DB, which image digest, which run.
+          scanner=$(trivy version --format json | jq -r '"Trivy \(.Version), vulnerability DB updated \(.VulnerabilityDB.UpdatedAt)"')
+          jq --arg scanner "$scanner" '.runs[] |= (.properties as $p | .results[]?.message.text +=
+            "\n\nFound by: \(env.WORKFLOW_REF) at \(env.WORKFLOW_SHA)\nScanner: \($scanner)\nImage: \($p.imageName)\nDigest: \($p.repoDigests[0] // "unknown")\nRun: \(env.RUN_URL)")' \
             trivy.sarif > tagged.sarif
           mv tagged.sarif trivy.sarif
 
