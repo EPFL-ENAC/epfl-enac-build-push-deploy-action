@@ -31,7 +31,7 @@ Trivy and crane are installed version-pinned with hardcoded checksums (no live a
 
 Notes:
 
-- Each alert message names this workflow and its commit, the Trivy version and DB date, the scanned image and its digest, and the run that found it.
+- Each alert message names this workflow and its commit. It also gives the Trivy version, the DB date, the image digest, and the run.
 - The scan opens no issue. After a run, look under **Security > Code scanning** for new alerts.
 - If you remove an image from `images` or delete its `dev` or `stage` tag, its category gets no more uploads and its alerts stay open. Delete that configuration on the alert page.
 - Private repositories need GitHub Code Security enabled. Without it, the SARIF upload fails.
