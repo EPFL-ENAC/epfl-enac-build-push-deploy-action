@@ -112,8 +112,8 @@ jobs:
         run: |
           # Version-pinned with a hardcoded checksum: installing from a live
           # apt repo or action would run whatever it serves that day as root.
-          TRIVY_VERSION=0.72.0
-          TRIVY_SHA256=bbb64b9695866ce4a7a8f5c9592002c5961cab378577fa3f8a040df362b9b2ea
+          TRIVY_VERSION=0.76.2
+          TRIVY_SHA256=bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf
           wget -q "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
           echo "${TRIVY_SHA256}  trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" | sha256sum -c
           # Same tarball and checksum as deploy.yml: one static binary, and
