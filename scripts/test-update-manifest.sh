@@ -71,6 +71,10 @@ check "  commits nothing" '! grep -q graphql "$fake/calls"'
 
 run "nothing to deploy" 1 IMAGES='[]'
 
+# chart_only callers send no image: only the chart version changes
+run "chart only" 0 IMAGES='[]' CHART_NAME=app CHART_VERSION=1.0.9-dev
+check "  bumps the chart, keeps the digests" '[ "$(committed 2 | yq ".images[0].digest, .helmCharts[0].version" | tr "\n" " ")" = "sha256:old-frontend 1.0.9-dev " ]'
+
 printf 'images:\n  - name: ghcr.io/org/app/frontend\n    digest: sha256:old\n' > "$fake/overlay.yaml"
 run "chart-less overlay" 0 IMAGES='[{"name":"ghcr.io/org/app/frontend","digest":"sha256:new","ref_name":"dev"}]' \
   CHART_NAME=app CHART_VERSION=1.0.9-dev

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `deploy.yml` input `chart_only` (default `false`). With `true`, no image is built: the workflow publishes the chart of `helm_chart_path` and writes only the chart version into the overlays. It is for a repository that holds a chart and no `Dockerfile`. `org` and `repo` name the overlays to update, so such a repository can update the overlays of another app. A caller without `chart_only` runs as before. Same input as `build-push-deploy` 0.5.0 on GitLab.
+
 ## [4.2.0] - 2026-11-18
 
 ### Added

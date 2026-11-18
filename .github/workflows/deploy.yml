@@ -50,6 +50,15 @@ on:
         required: false
         type: string
         default: '["./"]'
+      chart_only:
+        required: false
+        type: boolean
+        default: false
+        description: |
+          Build no image. Publish the chart of helm_chart_path and write only
+          its version into the overlays. For a repository that holds a chart
+          and no Dockerfile. org and repo name the overlays to update, which
+          can be those of another app.
       reuse_unchanged_images:
         required: false
         type: boolean
@@ -206,6 +215,7 @@ jobs:
         env:
           REUSE: ${{ inputs.reuse_unchanged_images }}
           KEY_PATHS: ${{ inputs.build_key_paths }}
+          CHART_ONLY: ${{ inputs.chart_only }}
         run: |
           # --- Determine registries configuration ---
           registries_input='${{ inputs.registries }}'
@@ -222,6 +232,8 @@ jobs:
           org="${{ env.CD_ORG }}"
           repo="${{ env.CD_REPO }}"
           input_json=${{ toJson(inputs.build_context) }};
+          # chart_only: no image, so an empty build matrix and no build job
+          [ "$CHART_ONLY" != true ] || input_json='[]'
           echo "Build contexts: $input_json";
           build_matrix=$(echo "$input_json" | jq -c \
             --arg owner "$owner" \
@@ -355,6 +367,8 @@ jobs:
     name: ${{ matrix.mode }} ${{ matrix.name }}
     runs-on: ubuntu-latest
     needs: define-matrix
+    # chart_only gives an empty matrix, which GitHub refuses to expand
+    if: needs.define-matrix.outputs.build_matrix != '[]'
     strategy:
       fail-fast: false
       matrix:
@@ -667,14 +681,16 @@ jobs:
   update-manifest:
     runs-on: ubuntu-latest
     needs: [define-matrix, build, publish-chart]
-    # publish-chart is skipped when no chart path is given; a skipped need
-    # would otherwise skip this job too
-    if: ${{ !cancelled() && needs.define-matrix.result == 'success' && needs.build.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.publish-chart.result) }}
+    # publish-chart is skipped when no chart path is given, and build is
+    # skipped with chart_only; a skipped need would otherwise skip this job
+    # too. One of the two must run: with both skipped, nothing was published.
+    if: ${{ !cancelled() && needs.define-matrix.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.build.result) && contains(fromJSON('["success","skipped"]'), needs.publish-chart.result) && (needs.build.result == 'success' || needs.publish-chart.result == 'success') }}
     permissions:
       contents: read
       packages: write
     steps:
       - name: Download all image data
+        if: needs.build.result == 'success'
         uses: actions/download-artifact@v8
         with:
           path: /tmp/image-data
@@ -726,7 +742,11 @@ jobs:
           ok=true
           jq -c '.[]' <<< "$MANIFEST_MATRIX" | while read -r target; do
             registry=$(jq -r .registry <<< "$target"); repo=$(jq -r .argo_repository <<< "$target")
-            images=$(jq -sc --arg r "$registry" '[.[] | select(.registry == $r)]' /tmp/image-data/*.json)
+            # chart_only: no build job ran, so no image data exists
+            images='[]'
+            if ls /tmp/image-data/*.json > /dev/null 2>&1; then
+              images=$(jq -sc --arg r "$registry" '[.[] | select(.registry == $r)]' /tmp/image-data/*.json)
+            fi
             payload=$(jq -nc --arg repo_name "${{ env.CD_REPO }}" --arg repo_org "${{ env.CD_ORG }}" --arg branch "$BRANCH" \
               --argjson images "$images" --argjson pr "${{ env.CREATE_PULL_REQUEST }}" \
               --arg chart "${{ inputs.helm_chart_name }}" --arg chart_version "$CHART_VERSION" \

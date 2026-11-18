@@ -13,6 +13,7 @@ together.
 | `repo` | required | app folder in the Argo repos, usually the repository name |
 | `build_context` | `'["./"]'` | JSON array of directories holding a `Dockerfile`; one image each, up to 9. See [Several images](#several-images) |
 | `image_name` | `repo` | image name for the root context only (`.` or `./`) |
+| `chart_only` | `false` | build no image: publish the chart of `helm_chart_path` and write only its version into the overlays. For a repository with a chart and no `Dockerfile`. `org` and `repo` name the overlays to update, which can be those of another app |
 | `registries` | | JSON array of registries and the Argo repos each one feeds. See [Several registries](#several-registries) |
 | `registry`, `registry_path`, `registry_username` | `ghcr.io`, `""`, `github.actor` | single-registry form, used when `registries` is empty |
 | `argo_repository` | `'["EPFL-ENAC/enack8s-app-config"]'` | Argo repos for the single-registry form |
