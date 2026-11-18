@@ -7,7 +7,8 @@ name: mirror-to-gitlab
 #   name: mirror-to-gitlab
 #   on:
 #     push:
-#       branches: [dev]
+#       branches: [dev, stage]
+#       tags: ["v*.*.*"]
 #   permissions:
 #     contents: read
 #   jobs:
@@ -20,7 +21,8 @@ name: mirror-to-gitlab
 #
 # Setup on the GitLab project: Settings > Repository > Deploy keys, add the
 # public key with "Grant write permissions"; then Protected branches, allow
-# that key to push to the mirrored branch. Outage fallback:
+# that key to push to the mirrored branch; for tags, Protected tags, allow
+# that key to create them. Outage fallback:
 #   git push git@gitlab-ssh.epfl.ch:EPFL-ENAC/my-app.git origin/dev:dev
 
 "on":
@@ -44,7 +46,9 @@ name: mirror-to-gitlab
         required: false
         type: string
         default: ${{ github.ref_name }}
-        description: Branch to push; defaults to the branch that triggered the caller
+        description: >-
+          Branch to push; defaults to the branch that triggered the caller.
+          Ignored on a tag push: the tag is pushed as refs/tags/<github.ref_name>
     secrets:
       deploy_key:
         required: true
@@ -59,10 +63,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.branch }}
+          ref: ${{ github.ref_type == 'tag' && github.ref || inputs.branch }}
           # a shallow clone cannot be pushed
           fetch-depth: 0
-      - name: Push ${{ inputs.branch }} to ${{ inputs.gitlab_repo }}
+      - name: Push ${{ github.ref_type == 'tag' && github.ref_name || inputs.branch }} to ${{ inputs.gitlab_repo }}
         env:
           DEPLOY_KEY: ${{ secrets.deploy_key }}
           HOST_KEY: ${{ inputs.gitlab_host_key }}
@@ -73,4 +77,10 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
           # pinned host key, no trust-on-first-use
           printf '%s\n' "$HOST_KEY" >> ~/.ssh/known_hosts
-          git push "$REMOTE" "HEAD:refs/heads/$BRANCH"
+          # a tag goes as itself (annotated object kept), never forced: same
+          # commit on GitLab is a no-op, a different one fails the push
+          SRC="HEAD" DST="refs/heads/$BRANCH"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            SRC="refs/tags/$GITHUB_REF_NAME" DST="refs/tags/$GITHUB_REF_NAME"
+          fi
+          git push "$REMOTE" "$SRC:$DST"

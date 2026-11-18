@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-11-18
+
+### Added
+
+- `mirror-to-gitlab.yml` mirrors tags. When the caller runs on a tag push (`github.ref_type == 'tag'`), it pushes `refs/tags/<tag>` to GitLab instead of creating a branch named after the tag. The tag is pushed as itself, so an annotated tag stays annotated, and never with `--force`: the same tag on the same commit is a no-op, on another commit the job fails. The `branch` input is ignored on a tag push. Branch pushes are unchanged. To mirror release tags, add `tags: ["v*.*.*"]` to the caller's `on.push` and, on the GitLab project, allow the deploy key to create protected tags.
+
 ## [4.1.0] - 2026-11-18
 
 ### Changed

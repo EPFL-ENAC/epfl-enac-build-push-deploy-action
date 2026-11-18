@@ -1,13 +1,15 @@
-# Mirroring a branch to GitLab
+# Mirroring a branch or tag to GitLab
 
 GitLab CE cannot pull from GitHub, and a push nobody remembers is a silent
-non-deploy. `mirror-to-gitlab.yml` pushes the branch after every change:
+non-deploy. `mirror-to-gitlab.yml` pushes the branch after every change, and
+a release tag as a tag:
 
 ```yaml
 name: mirror-to-gitlab
 "on":
   push:
-    branches: [dev]
+    branches: [dev, stage]
+    tags: ["v*.*.*"]
 permissions:
   contents: read
 jobs:
@@ -24,10 +26,15 @@ Setup, once per app:
 1. `ssh-keygen -t ed25519 -N '' -f gitlab-mirror` on your machine.
 2. GitLab project → Settings → Repository → Deploy keys: add `gitlab-mirror.pub` with **Grant write permissions**.
 3. Same page, Protected branches: allow that deploy key to push to the branch you mirror. A deploy key is scoped to that project and, through this, to that branch.
-4. GitHub repo → Settings → Secrets → Actions: `GITLAB_DEPLOY_KEY` = the private key. Delete the local file.
+4. If you mirror tags: Settings → Repository → Protected tags, protect `v*` and allow that deploy key to create them.
+5. GitHub repo → Settings → Secrets → Actions: `GITLAB_DEPLOY_KEY` = the private key. Delete the local file.
 
 The workflow pins gitlab.epfl.ch's SSH host key (fingerprint
 `SHA256:/OhwCKIqMSKkZP0RgiQ5f0qS64EsnYL++6Y+Gbmx7tU`); compare it with
 <https://gitlab.epfl.ch/help/instance_configuration> before accepting a
-change to it. When GitHub Actions is down, push by hand:
+change to it.
+
+On a tag push the workflow pushes `refs/tags/<tag>` (the `branch` input is
+ignored). It never forces a tag: if GitLab has the tag on the same commit,
+the push does nothing; on another commit, the job fails. When GitHub Actions is down, push by hand:
 `git push git@gitlab-ssh.epfl.ch:EPFL-ENAC/my-app.git origin/dev:dev`.
