@@ -7,7 +7,7 @@ help:
 		@echo "  make help       - Display this help message"
 		@echo "  make install    - Install lefthook"
 		@echo "  make clean      - Clean up the environment"
-		@echo "  make test       - Test scripts/update-manifest.sh (needs jq, yq v4)"
+		@echo "  make test       - Test scripts/update-manifest.sh (needs jq, yq v4) and the deploy.yml chart-version rule"
 
 install: $(VENV_DIR)/bin/activate
 		$(VENV_DIR)/bin/uv pip install lefthook
@@ -46,3 +46,4 @@ $(VENV_DIR)/bin/activate:
 
 test:
 		sh scripts/test-update-manifest.sh
+		sh scripts/test-chart-version.sh

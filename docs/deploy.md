@@ -247,8 +247,11 @@ In use:
 ```
 
 The chart is rendered once per line of `helm_chart_render_args` (all must
-succeed), packaged as `1.0.<run number>` on a tag, `-rc` on `stage`, `-dev`
-elsewhere, and pushed to `oci://ghcr.io/<repository>/helm`. The job runs
+succeed), packaged and pushed. A SemVer tag `vX.Y.Z[-pre]` publishes chart
+`X.Y.Z[-pre]` with `appVersion` set to the tag, so the chart names the app
+release it holds. Another tag publishes `1.0.<run number>` with a warning;
+`stage` publishes `1.0.<run number>-rc`, other branches `-dev`. The chart is
+pushed to `oci://ghcr.io/<repository>/helm`. The job runs
 beside the image builds; only the manifest update waits for it, and
 receives the version as `helm_chart_version`. In use:
 [co2-calculator](https://github.com/EPFL-ENAC/co2-calculator/blob/HEAD/helm).
