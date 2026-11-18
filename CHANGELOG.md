@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-11-18
+
 ### Changed
 
 - `deploy.yml` publishes the Helm chart of a SemVer tag (`vX.Y.Z` or `X.Y.Z`, optional `-prerelease`) as `X.Y.Z[-prerelease]`, with `appVersion` set to the tag, instead of `1.0.<run_number>`. A chart version now names the app release it holds. A tag that is not SemVer keeps `1.0.<run_number>` and logs a warning. Branch builds are unchanged. The rule lives inline in the "Chart version" step, between `chart-version-rule` markers, and `scripts/test-chart-version.sh` runs it from there through `make test`. Callers pinning a release chart as `1.0.N` must move the pin to the app version on their next tag.
