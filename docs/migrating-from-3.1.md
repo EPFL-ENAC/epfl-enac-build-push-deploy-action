@@ -55,7 +55,7 @@ If you run your own chart job in front of `deploy` because `update-manifest` nee
         --set backend.existingSecret.name=ci-existing-secret
 ```
 
-Then delete your chart job, its `needs:` entry on `deploy`, and the `helm_chart_version:` input. The version scheme is the one most callers already use, `1.0.<run_number>` for tags, `-rc` on stage, `-dev` elsewhere, so the sequence continues where yours stopped. The chart is pushed to `oci://ghcr.io/<your repo, lowercased>/helm`.
+Then delete your chart job, its `needs:` entry on `deploy`, and the `helm_chart_version:` input. Branches keep the scheme most callers already use, `1.0.<run_number>-rc` on stage and `-dev` elsewhere. A SemVer tag `vX.Y.Z` publishes chart `X.Y.Z` (appVersion `vX.Y.Z`); another tag publishes `1.0.<run_number>`. The chart is pushed to `oci://ghcr.io/<your repo, lowercased>/helm`.
 
 ## Step 4 (optional): compute build args inside the build job
 

@@ -2,10 +2,10 @@ name: test
 
 "on":
   pull_request:
-    paths: ["scripts/**", ".github/workflows/test.yml"]
+    paths: ["scripts/**", ".github/workflows/test.yml", ".github/workflows/deploy.yml"]
   push:
     branches: [main]
-    paths: ["scripts/**", ".github/workflows/test.yml"]
+    paths: ["scripts/**", ".github/workflows/test.yml", ".github/workflows/deploy.yml"]
 
 permissions:
   contents: read
@@ -15,5 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # ubuntu-latest ships jq and yq v4, the script's only dependencies
+      # ubuntu-latest ships jq and yq v4, the scripts' only dependencies;
+      # runs test-update-manifest.sh and test-chart-version.sh
       - run: make test
